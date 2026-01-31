@@ -96,7 +96,7 @@ class Documentation:
         quants_table = "| Versión | Tipo | Peso | Calidad | Uso Recomendado |\n| :--- | :--- | :--- | :--- | :--- |\n"
         for q in quant_list:
             q_type = "Medium" if "Q4" in q else "Large" if "Q5" in q else "Ultra"
-            stars = "⭐⭐⭐" if "Q4" in q else "⭐⭐⭐⭐" if "Q5" in q else "⭐⭐⭐⭐⭐"
+            stars = "Basica" if "Q4" in q else "Alta" if "Q5" in q else "Alta"
             usage = "Balance / Velocidad" if "Q4" in q else "Uso Profesional"
             size = "~5-7GB" if "Q4" in q else "~8-10GB" if "Q5" in q else "Original"
             quants_table += f"| **{q}** | {q_type} | {size} | {stars} | {usage} |\n"
