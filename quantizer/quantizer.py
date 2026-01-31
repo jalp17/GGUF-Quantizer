@@ -203,57 +203,64 @@ class GGUFQuantizer:
         # Determinar quants a usar
         quants_to_process = custom_quants if custom_quants else Config.QUANTS
         
-        # 1. Descarga
         raw_model = os.path.join(Config.INPUT_DIR, f"{safe_name}.safetensors")
-        self.download_file(meta['download_url'], raw_model)
-        
-        # 2. Extracción
-        from tools.extract_components import extract_components
         comp_dir = os.path.join(Config.INPUT_DIR, f"components_{safe_name}")
-        extracted = extract_components(raw_model, comp_dir)
-        
-        # 3. Subir Componentes No-Unet (Si procede)
-        if upload_to_hf:
-            print(f"📦 Creando/Verificando repo: {repo_id}")
-            create_repo(repo_id, token=Config.HF_TOKEN, exist_ok=True)
-            
-            for name, path in extracted.items():
-                if name != "unet":
-                    print(f"⬆️ Subiendo {name}...")
-                    self.api.upload_file(path_or_fileobj=path, path_in_repo=f"{name}.safetensors", repo_id=repo_id, token=Config.HF_TOKEN)
-
-        # 4. FP16 GGUF Base
-        unet_path = extracted.get("unet")
         fp16_path = os.path.join(Config.OUTPUT_DIR, f"{safe_name}.fp16.gguf")
-        print("⚙️ Generando base FP16...")
-        subprocess.run([sys.executable, Config.CONVERT_SCRIPT, "--src", unet_path, "--dst", fp16_path], check=True)
-        
-        # 5. Cuantización
-        for q in quants_to_process:
-            print(f"⚖️ Cuantizando a {q}...")
-            quant_name = f"{safe_name}.{q}.gguf"
-            quant_path = os.path.join(Config.OUTPUT_DIR, quant_name)
-            subprocess.run([Config.QUANTIZE_BIN, fp16_path, quant_path, q], check=True)
-            
-            if upload_to_hf:
-                print(f"⬆️ Subiendo {quant_name}...")
-                self.api.upload_file(path_or_fileobj=quant_path, path_in_repo=quant_name, repo_id=repo_id, token=Config.HF_TOKEN)
-            else:
-                print(f"💾 Guardado localmente: {quant_path}")
-            
-            # Nota: Si no subimos, quizás el usuario quiera conservar el archivo. 
-            # Si subimos, lo borramos para ahorrar espacio. Por ahora mantenemos el borrado tras subida.
-            if upload_to_hf:
-                os.remove(quant_path)
 
-        # 6. README (Si procede)
-        if upload_to_hf:
-            print("📝 Actualizando documentación en HF...")
-            readme = Documentation.generate_readme(meta, quants_to_process)
-            self.api.upload_file(path_or_fileobj=readme.encode("utf-8"), path_in_repo="README.md", repo_id=repo_id, token=Config.HF_TOKEN)
+        try:
+            # 1. Descarga
+            self.download_file(meta['download_url'], raw_model)
+            
+            # 2. Extracción
+            from tools.extract_components import extract_components
+            extracted = extract_components(raw_model, comp_dir)
+            
+            # 3. Subir Componentes No-Unet (Si procede)
+            if upload_to_hf:
+                print(f"📦 Creando/Verificando repo: {repo_id}")
+                create_repo(repo_id, token=Config.HF_TOKEN, exist_ok=True)
+                
+                for name, path in extracted.items():
+                    if name != "unet":
+                        print(f"⬆️ Subiendo {name}...")
+                        self.api.upload_file(path_or_fileobj=path, path_in_repo=f"{name}.safetensors", repo_id=repo_id, token=Config.HF_TOKEN)
 
-        # Limpieza
-        os.remove(raw_model)
-        os.remove(fp16_path)
-        shutil.rmtree(comp_dir)
-        print(f"✅ Finalizado procesamiento de: {meta['name']}")
+            # 4. FP16 GGUF Base
+            unet_path = extracted.get("unet")
+            print("⚙️ Generando base FP16...")
+            subprocess.run([sys.executable, Config.CONVERT_SCRIPT, "--src", unet_path, "--dst", fp16_path], check=True)
+            
+            # 5. Cuantización
+            for q in quants_to_process:
+                print(f"⚖️ Cuantizando a {q}...")
+                quant_name = f"{safe_name}.{q}.gguf"
+                quant_path = os.path.join(Config.OUTPUT_DIR, quant_name)
+                try:
+                    subprocess.run([Config.QUANTIZE_BIN, fp16_path, quant_path, q], check=True)
+                    
+                    if upload_to_hf:
+                        print(f"⬆️ Subiendo {quant_name}...")
+                        self.api.upload_file(path_or_fileobj=quant_path, path_in_repo=quant_name, repo_id=repo_id, token=Config.HF_TOKEN)
+                    else:
+                        print(f"💾 Guardado localmente: {quant_path}")
+                finally:
+                    # Borrado inmediato del archivo cuantizado tras subida o error
+                    if upload_to_hf and os.path.exists(quant_path):
+                        os.remove(quant_path)
+
+            # 6. README (Si procede)
+            if upload_to_hf:
+                print("📝 Actualizando documentación en HF...")
+                readme = Documentation.generate_readme(meta, quants_to_process)
+                self.api.upload_file(path_or_fileobj=readme.encode("utf-8"), path_in_repo="README.md", repo_id=repo_id, token=Config.HF_TOKEN)
+
+        finally:
+            # Limpieza garantizada de archivos pesados
+            print(f"🧹 Limpiando archivos temporales de: {meta['name']}...")
+            if os.path.exists(raw_model):
+                os.remove(raw_model)
+            if os.path.exists(fp16_path):
+                os.remove(fp16_path)
+            if os.path.exists(comp_dir):
+                shutil.rmtree(comp_dir)
+            print(f"✅ Finalizado procesamiento de: {meta['name']}")
