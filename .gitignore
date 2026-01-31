@@ -1,0 +1,42 @@
+# Modelos y Archivos Pesados
+*.safetensors
+*.gguf
+/models/
+/input/
+/output/
+
+# Binarios y Compilación
+/bin/
+/build/
+*.exe
+*.o
+*.a
+*.lib
+llama.cpp/
+
+# Python y Entorno
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+venv/
+
+# Temporales y Logs
+/tmp/
+*.log
+*.txt
+!requirements.txt
+
+# Documentación de Bitácora (No necesaria en el repo)
+Contexto del Proyecto.txt
+progreso.txt
+
+# Carpetas de Aprendizaje y Pruebas
+/learning/
+/converted/
+
+# Archivos de configuración de sistema
+.vscode/
+.idea/
+*.swp

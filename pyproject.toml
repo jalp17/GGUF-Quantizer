@@ -1,0 +1,25 @@
+[project]
+name = "gguf-quantizer"
+description = "Herramienta para la extracción y cuantización de modelos de imagen (SDXL, Flux) al formato GGUF."
+version = "1.1.0"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "GGUF-Factory User" }
+]
+dependencies = [
+    "torch",
+    "safetensors",
+    "tqdm",
+    "requests",
+    "huggingface_hub",
+    "python-dotenv"
+]
+
+[project.urls]
+Repository = "https://github.com/jalp17/GGUF-Quantizer"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

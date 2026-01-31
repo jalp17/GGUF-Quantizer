@@ -1,0 +1,6 @@
+torch
+safetensors
+tqdm
+requests
+huggingface_hub
+python-dotenv
