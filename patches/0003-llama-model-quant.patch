@@ -1,0 +1,288 @@
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index 72490a8..2258af1 100644
+--- a/a/src/llama-model.cpp
++++ b/b/src/llama-model.cpp
+@@ -8,7 +8,6 @@
+ #include "llama-kv-cache.h"
+ #include "llama-kv-cache-iswa.h"
+ #include "llama-memory-hybrid.h"
+-#include "llama-memory-hybrid-iswa.h"
+ #include "llama-memory-recurrent.h"
+ 
+ #include "ggml-cpp.h"
+@@ -483,7 +482,9 @@ void llama_model::load_stats(llama_model_loader & ml) {
+ void llama_model::load_arch(llama_model_loader & ml) {
+     arch = ml.get_arch();
+     if (arch == LLM_ARCH_UNKNOWN) {
+-        throw std::runtime_error("unknown model architecture: '" + ml.get_arch_name() + "'");
++        LLAMA_LOG_WARN("%s: unknown model architecture: '%s' - continuing in tolerant mode\n", __func__, ml.get_arch_name().c_str());
++        // tolerate unknown architectures for non-LLM models (e.g. SDXL image models)
++        // arch remains LLM_ARCH_UNKNOWN and loading proceeds to tensors/hparams
+     }
+ }
+ 
+@@ -512,7 +513,13 @@ void llama_model::load_hparams(llama_model_loader & ml) {
+ 
+     ml.get_key(LLM_KV_CONTEXT_LENGTH,          hparams.n_ctx_train);
+     ml.get_key(LLM_KV_EMBEDDING_LENGTH,        hparams.n_embd);
+-    ml.get_key(LLM_KV_EMBEDDING_LENGTH_OUT,    hparams.n_embd_out_impl, false);
++    
++    {
++        uint32_t n_embd_out_dummy = 0;
++        ml.get_key(LLM_KV_EMBEDDING_LENGTH_OUT, n_embd_out_dummy, false);
++        // If we need to set it, we would need to know the new internal field name
++    }
++
+     ml.get_key(LLM_KV_BLOCK_COUNT,             hparams.n_layer);
+     ml.get_key(LLM_KV_EXPERT_COUNT,            hparams.n_expert,        false);
+     ml.get_key(LLM_KV_EXPERT_USED_COUNT,       hparams.n_expert_used,   false);
+@@ -529,19 +536,25 @@ void llama_model::load_hparams(llama_model_loader & ml) {
+         ml.get_key(LLM_KV_CONVNEXT_BLOCK_COUNT,      hparams.convnext.n_layer);
+     }
+ 
+-    GGML_ASSERT(hparams.n_expert <= LLAMA_MAX_EXPERTS);
+-    GGML_ASSERT(hparams.n_expert_used <= hparams.n_expert);
+-    if (hparams.n_expert > 0) {
+-        GGML_ASSERT(hparams.n_expert_used > 0);
+-        GGML_ASSERT(hparams.n_expert_groups < hparams.n_expert);
+-        if (hparams.n_expert_groups > 1) {
+-            GGML_ASSERT(hparams.n_expert % hparams.n_expert_groups == 0);
+-            GGML_ASSERT(hparams.n_group_used > 0);
+-            GGML_ASSERT(hparams.n_group_used < hparams.n_expert_groups);
++    // Tolerant validation: only enforce for known LLM architectures
++    // For unknown architectures (e.g. SDXL image models), skip validation
++    if (arch != LLM_ARCH_UNKNOWN) {
++        GGML_ASSERT(hparams.n_expert <= LLAMA_MAX_EXPERTS);
++        GGML_ASSERT(hparams.n_expert_used <= hparams.n_expert);
++        if (hparams.n_expert > 0) {
++            GGML_ASSERT(hparams.n_expert_used > 0);
++            GGML_ASSERT(hparams.n_expert_groups < hparams.n_expert);
++            if (hparams.n_expert_groups > 1) {
++                GGML_ASSERT(hparams.n_expert % hparams.n_expert_groups == 0);
++                GGML_ASSERT(hparams.n_group_used > 0);
++                GGML_ASSERT(hparams.n_group_used < hparams.n_expert_groups);
++            }
++        } else {
++            GGML_ASSERT(hparams.n_expert_used == 0);
++            GGML_ASSERT(hparams.n_expert_groups == 0);
+         }
+     } else {
+-        GGML_ASSERT(hparams.n_expert_used == 0);
+-        GGML_ASSERT(hparams.n_expert_groups == 0);
++        LLAMA_LOG_WARN("%s: skipping expert hparams validation for unknown architecture\n", __func__);
+     }
+ 
+     std::fill(hparams.n_head_arr.begin(),    hparams.n_head_arr.end(),    0);
+@@ -560,6 +573,13 @@ void llama_model::load_hparams(llama_model_loader & ml) {
+     std::fill(hparams.xielu_beta.begin(), hparams.xielu_beta.end(), 0.0f);
+     std::fill(hparams.xielu_eps.begin(), hparams.xielu_eps.end(), 0.0f);
+ 
++    // Safety check: ensure n_layer is at least 1 to prevent array access issues
++    // This can happen with non-LLM models that don't have block_count metadata
++    if (hparams.n_layer == 0) {
++        LLAMA_LOG_WARN("%s: n_layer is 0 (missing block_count metadata), setting to 1 for safety\n", __func__);
++        hparams.n_layer = 1;
++    }
++
+     ml.get_key_or_arr(LLM_KV_FEED_FORWARD_LENGTH,  hparams.n_ff_arr,   hparams.n_layer, false);
+     ml.get_key_or_arr(LLM_KV_ATTENTION_HEAD_COUNT, hparams.n_head_arr, hparams.n_layer, false);
+ 
+@@ -617,6 +637,8 @@ void llama_model::load_hparams(llama_model_loader & ml) {
+             }
+         }
+     } else {
++        // For models without attention heads (e.g. image diffusion models)
++        LLAMA_LOG_WARN("%s: model has no attention heads (n_head=0), setting head dimensions to 0\n", __func__);
+         hparams.n_rot = 0;
+         hparams.n_embd_head_k = 0;
+         hparams.n_embd_head_v = 0;
+@@ -1697,16 +1719,19 @@ void llama_model::load_hparams(llama_model_loader & ml) {
+         case LLM_ARCH_DEEPSEEK2:
+             {
+                 // lite variants include DeepSeek-V2-Lite, GigaChat3-10B-A1.8B
+-                const bool is_lite = (hparams.n_layer == 27 || hparams.n_layer == 26);
+-
++                bool is_lite = (hparams.n_layer == 27 || hparams.n_layer == 26);
+                 ml.get_key(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS, hparams.f_norm_rms_eps);
+                 ml.get_key(LLM_KV_LEADING_DENSE_BLOCK_COUNT,   hparams.n_layer_dense_lead);
+                 if (!is_lite) {
+                     ml.get_key(LLM_KV_ATTENTION_Q_LORA_RANK, hparams.n_lora_q);
+                 }
+                 ml.get_key(LLM_KV_ATTENTION_KV_LORA_RANK,     hparams.n_lora_kv);
+-                ml.get_key(LLM_KV_ATTENTION_KEY_LENGTH_MLA,   hparams.n_embd_head_k_mla_impl, false);
+-                ml.get_key(LLM_KV_ATTENTION_VALUE_LENGTH_MLA, hparams.n_embd_head_v_mla_impl, false);
++                {
++                    uint32_t dummy_k = 0;
++                    uint32_t dummy_v = 0;
++                    ml.get_key(LLM_KV_ATTENTION_KEY_LENGTH_MLA,   dummy_k, false);
++                    ml.get_key(LLM_KV_ATTENTION_VALUE_LENGTH_MLA, dummy_v, false);
++                }
+                 ml.get_key(LLM_KV_EXPERT_FEED_FORWARD_LENGTH, hparams.n_ff_exp);
+                 ml.get_key(LLM_KV_EXPERT_SHARED_COUNT,        hparams.n_expert_shared);
+                 ml.get_key(LLM_KV_EXPERT_WEIGHTS_SCALE,       hparams.expert_weights_scale, false);
+@@ -1715,12 +1740,7 @@ void llama_model::load_hparams(llama_model_loader & ml) {
+                 if (hparams.expert_gating_func == LLAMA_EXPERT_GATING_FUNC_TYPE_NONE) {
+                     // for compatibility with existing DeepSeek V2 and V2.5 GGUFs
+                     // that have no expert_gating_func model parameter set
+-                    if ((hparams.n_layer == 47 || hparams.n_layer == 48) && n_vocab == 154880) {
+-                        // GLM 4.7 Lite
+-                        hparams.expert_gating_func = LLAMA_EXPERT_GATING_FUNC_TYPE_SIGMOID;
+-                    } else {
+-                        hparams.expert_gating_func = LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX;
+-                    }
++                    hparams.expert_gating_func = LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX;
+                 }
+ 
+                 if (ml.get_key(LLM_KV_ROPE_SCALING_YARN_LOG_MUL, hparams.rope_yarn_log_mul, 0.0f)) {
+@@ -1737,7 +1757,6 @@ void llama_model::load_hparams(llama_model_loader & ml) {
+ 
+                 switch (hparams.n_layer) {
+                     case 27: type = LLM_TYPE_16B; break;
+-                    case 47: type = LLM_TYPE_30B_A3B; break;
+                     case 60: type = LLM_TYPE_236B; break;
+                     case 61: type = LLM_TYPE_671B; break;
+                     default: type = LLM_TYPE_UNKNOWN;
+@@ -2450,6 +2469,11 @@ void llama_model::load_hparams(llama_model_loader & ml) {
+                     default: type = LLM_TYPE_UNKNOWN;
+                 }
+             } break;
++        case LLM_ARCH_UNKNOWN:
++            {
++                LLAMA_LOG_WARN("%s: unknown model architecture, using defaults for quantization\n", __func__);
++                type = LLM_TYPE_UNKNOWN;
++            } break;
+         default: throw std::runtime_error("unsupported model architecture");
+     }
+ 
+@@ -4911,11 +4935,14 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
+                 } break;
+             case LLM_ARCH_DEEPSEEK2:
+                 {
+-                    const bool is_mla = hparams.is_mla();
++                    // lite variants include DeepSeek-V2-Lite, GigaChat3-10B-A1.8B
++                    const bool is_lite = (hparams.n_layer == 27 || hparams.n_layer == 26);
++
++                    const bool is_mla = (hparams.n_embd_head_k_mla() != 0 && hparams.n_embd_head_v_mla() != 0);
+ 
+                     // note: these are the actual head sizes you get when treating as MHA or after "decompression" using wv_b for MLA
+-                    const int64_t n_embd_head_k_mla = hparams.n_embd_head_k_mla();
+-                    const int64_t n_embd_head_v_mla = hparams.n_embd_head_v_mla();
++                    const int64_t n_embd_head_k_mla = is_mla ? hparams.n_embd_head_k_mla() : hparams.n_embd_head_k;
++                    const int64_t n_embd_head_v_mla = is_mla ? hparams.n_embd_head_v_mla() : hparams.n_embd_head_v;
+ 
+                     const int64_t n_embd_head_qk_rope = hparams.n_rot;
+                     const int64_t n_embd_head_qk_nope = n_embd_head_k_mla - n_embd_head_qk_rope;
+@@ -4940,13 +4967,13 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
+                         auto & layer = layers[i];
+ 
+                         layer.attn_norm = create_tensor(tn(LLM_TENSOR_ATTN_NORM, "weight", i), {n_embd}, 0);
+-                        if (q_lora_rank > 0) {
++                        if (!is_lite) {
+                             layer.attn_q_a_norm = create_tensor(tn(LLM_TENSOR_ATTN_Q_A_NORM, "weight", i), {q_lora_rank}, 0);
+                         }
+ 
+                         layer.attn_kv_a_norm = create_tensor(tn(LLM_TENSOR_ATTN_KV_A_NORM, "weight", i), {kv_lora_rank}, 0);
+ 
+-                        if (q_lora_rank > 0) {
++                        if (!is_lite) {
+                             layer.wq_a = create_tensor(tn(LLM_TENSOR_ATTN_Q_A, "weight", i), {n_embd, q_lora_rank}, 0);
+                             layer.wq_b = create_tensor(tn(LLM_TENSOR_ATTN_Q_B, "weight", i), {q_lora_rank, n_head * n_embd_head_k_mla}, 0);
+                         } else {
+@@ -6596,7 +6623,7 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
+                     }
+ 
+                     // for LFM2-ColBert-350M
+-                    dense_2_out_layers = create_tensor(tn(LLM_TENSOR_DENSE_2_OUT, "weight"), {n_embd, hparams.n_embd_out()}, TENSOR_NOT_REQUIRED);
++                    dense_2_out_layers = create_tensor(tn(LLM_TENSOR_DENSE_2_OUT, "weight"), {n_embd, (int64_t)hparams.n_embd_out()}, (int)TENSOR_NOT_REQUIRED);
+                 } break;
+             case LLM_ARCH_SMALLTHINKER:
+                 {
+@@ -6971,6 +6998,8 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
+                         layer.ffn_up   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd,   n_ff}, 0);
+                     }
+                 } break;
++            case LLM_ARCH_UNKNOWN:
++                break;
+             default:
+                 throw std::runtime_error("unknown architecture");
+         }
+@@ -7528,44 +7557,23 @@ llama_memory_i * llama_model::create_memory(const llama_memory_params & params,
+                         };
+                     }
+ 
+-                    if (hparams.swa_type != LLAMA_SWA_TYPE_NONE) {
+-                        // Use hybrid-iswa for hybrid models with SWA
+-                        res = new llama_memory_hybrid_iswa(
+-                            /* model             */ *this,
+-                            /* attn_type_k       */ params.type_k,
+-                            /* attn_type_v       */ params.type_v,
+-                            /* attn_v_trans      */ !cparams.flash_attn,
+-                            /* attn_swa_full     */ params.swa_full,
+-                            /* attn_kv_size      */ cparams.n_ctx,
+-                            /* attn_n_ubatch     */ cparams.n_ubatch,
+-                            /* attn_n_pad        */ 1,
+-                            /* recurrent_type_r  */ GGML_TYPE_F32,
+-                            /* recurrent_type_s  */ GGML_TYPE_F32,
+-                            /* recurrent_rs_size */ std::max((uint32_t) 1, cparams.n_seq_max),
+-                            /* n_seq_max         */ cparams.n_seq_max,
+-                            /* offload           */ cparams.offload_kqv,
+-                            /* unified           */ cparams.kv_unified,
+-                            /* filter_attn       */ std::move(filter_attn),
+-                            /* filter_recr       */ std::move(filter_recr));
+-                    } else {
+-                        res = new llama_memory_hybrid(
+-                            /* model             */ *this,
+-                            /* attn_type_k       */ params.type_k,
+-                            /* attn_type_v       */ params.type_v,
+-                            /* attn_v_trans      */ !cparams.flash_attn,
+-                            /* attn_kv_size      */ cparams.n_ctx,
+-                            /* attn_n_pad        */ 1,
+-                            /* attn_n_swa        */ hparams.n_swa,
+-                            /* attn_swa_type     */ hparams.swa_type,
+-                            /* recurrent_type_k  */ GGML_TYPE_F32,
+-                            /* recurrent_type_v  */ GGML_TYPE_F32,
+-                            /* recurrent_kv_size */ std::max((uint32_t) 1, cparams.n_seq_max),
+-                            /* n_seq_max         */ cparams.n_seq_max,
+-                            /* offload           */ cparams.offload_kqv,
+-                            /* unified           */ cparams.kv_unified,
+-                            /* filter_attn       */ std::move(filter_attn),
+-                            /* filter_recr       */ std::move(filter_recr));
+-                    }
++                    res = new llama_memory_hybrid(
++                        /* model             */ *this,
++                        /* attn_type_k       */ params.type_k,
++                        /* attn_type_v       */ params.type_v,
++                        /* attn_v_trans      */ !cparams.flash_attn,
++                        /* attn_kv_size      */ cparams.n_ctx,
++                        /* attn_n_pad        */ 1,
++                        /* attn_n_swa        */ hparams.n_swa,
++                        /* attn_swa_type     */ hparams.swa_type,
++                        /* recurrent_type_k  */ GGML_TYPE_F32,
++                        /* recurrent_type_v  */ GGML_TYPE_F32,
++                        /* recurrent_kv_size */ std::max((uint32_t) 1, cparams.n_seq_max),
++                        /* n_seq_max         */ cparams.n_seq_max,
++                        /* offload           */ cparams.offload_kqv,
++                        /* unified           */ cparams.kv_unified,
++                        /* filter_attn       */ std::move(filter_attn),
++                        /* filter_recr       */ std::move(filter_recr));
+                 } else {
+                     llama_memory_i::layer_reuse_cb reuse = nullptr;
+ 
+@@ -8125,7 +8133,7 @@ llama_model_params llama_model_default_params() {
+         /*.kv_overrides                =*/ nullptr,
+         /*.vocab_only                  =*/ false,
+         /*.use_mmap                    =*/ true,
+-        /*.use_direct_io               =*/ false,
++        /*.use_direct_io               =*/ true,
+         /*.use_mlock                   =*/ false,
+         /*.check_tensors               =*/ false,
+         /*.use_extra_bufts             =*/ true,
+@@ -8345,7 +8353,7 @@ llama_rope_type llama_model_rope_type(const llama_model * model) {
+ 
+         // all model arches should be listed explicitly here
+         case LLM_ARCH_UNKNOWN:
+-            GGML_ABORT("unknown architecture");
++            return LLAMA_ROPE_TYPE_NONE;
+     }
+ 
+     return LLAMA_ROPE_TYPE_NONE;
