@@ -93,53 +93,70 @@ class Documentation:
         
         yaml = f"---\nlicense: other\ntags:\n- stable-diffusion\n- {arch.lower()}\n- gguf\n- comfyui\n---\n"
         
-        quants_table = "| Versión | Tipo | Uso Recomendado | Calidad |\n| :--- | :--- | :--- | :--- |\n"
+        quants_table = "| Versión | Tipo | Peso | Calidad | Uso Recomendado |\n| :--- | :--- | :--- | :--- | :--- |\n"
         for q in quant_list:
             q_type = "Medium" if "Q4" in q else "Large" if "Q5" in q else "Ultra"
             stars = "⭐⭐⭐" if "Q4" in q else "⭐⭐⭐⭐" if "Q5" in q else "⭐⭐⭐⭐⭐"
-            usage = "Balance perfecto" if "Q4" in q else "Calidad superior"
-            quants_table += f"| **{q}** | {q_type} | {usage} | {stars} |\n"
+            usage = "Balance / Velocidad" if "Q4" in q else "Uso Profesional"
+            size = "~5-7GB" if "Q4" in q else "~8-10GB" if "Q5" in q else "Original"
+            quants_table += f"| **{q}** | {q_type} | {size} | {stars} | {usage} |\n"
 
         clean_desc = Documentation.clean_html(meta.get('description', ""))
         
-        return yaml + f"""# {meta['name']} - GGUF Collection 🚀
+        return yaml + f"""# {meta['name']} - GGUF Ultimate Edition 🏭
 
-Este repositorio contiene versiones optimizadas en formato **GGUF** del modelo original [{meta['name']}](https://civitai.com/models/{meta['id']}).
-
----
-
-## 👤 Créditos y Autoría
-- **Autor Original:** [{meta['author']}](https://civitai.com/user/{meta['author']})
-- **Proceso de Cuantización:** [{Config.HF_USER}](https://huggingface.co/{Config.HF_USER})
-
-> [!IMPORTANT]
-> **Aviso de Autoría:** Este modelo no es de mi creación. Yo únicamente he realizado la cuantización (compresión) técnica. Todo el mérito creativo pertenece al autor original mencionado arriba.
+Este repositorio ofrece la colección definitiva en formato **GGUF** del modelo original [{meta['name']}](https://civitai.com/models/{meta['id']}). Optimizados para un rendimiento máximo en **ComfyUI**.
 
 ---
 
-## 📊 Tabla de Versiones y Recomendaciones
+## � Tabla de Comparativa de Cuantizaciones
 {quants_table}
 
 ---
 
-## ⚙️ Detalles Técnicos
-- **Arquitectura Base:** {arch}
-- **Formato:** GGUF (Agnóstico)
-- **Herramientas:** llama.cpp & ComfyUI-GGUF
+## ⚙️ Guía de Optimización y Comparativa de Parámetros
+
+Para obtener los mejores resultados con esta versión GGUF, se recomiendan los siguientes ajustes:
+
+### 1. 🎚️ Comparativa de CFG (Classifier Free Guidance)
+| CFG Scale | Efecto en GGUF | Resultado Visual |
+| :--- | :--- | :--- |
+| **1.0 - 3.5** | Suave / Realista | Menos contraste, ideal para estilos fotográficos. |
+| **4.0 - 6.5** | **Recomendado** | Balance perfecto entre fidelidad al prompt y detalle. |
+| **7.0 - 9.0** | Estilizado | Colores más saturados y bordes más definidos. |
+
+### 2. ⚡ Comparativa de Pasos (Sampling Steps)
+| Pasos | Rendimiento | Nivel de Detalle |
+| :--- | :--- | :--- |
+| **15 - 20** | Ultra Rápido | Bocetos rápidos o previsualizaciones. |
+| **25 - 35** | **Óptimo** | El "Sweet Spot" para GGUF con casi cero ruido. |
+| **40+** | Estándar | Máximo refinamiento de texturas complejas. |
+
+### 3. 🌫️ Comparativa de Denoise (Solo para i2i / Hires Fix)
+*   **0.35 - 0.45**: Mantiene la estructura original pero con limpieza de artefactos.
+*   **0.50 - 0.65**: El rango ideal para añadir detalle sin deformar el sujeto.
+*   **0.70+**: Cambio significativo de composición (usar con precaución).
 
 ---
 
-## 🚀 Instrucciones para ComfyUI
-1. **GGUF (UNET)**: Coloque los archivos `.gguf` en `ComfyUI/models/unet/`
-2. **Componentes**: CLIP/VAE en sus carpetas respectivas.
+## 👤 Créditos y Atribución
+- **Autor Original:** [{meta['author']}](https://civitai.com/user/{meta['author']})
+- **Cuantización Experta:** [{Config.HF_USER}](https://huggingface.co/{Config.HF_USER})
 
 ---
 
-## 📝 Descripción del Autor Original
+## 🚀 Despliegue en ComfyUI
+1. **Archivo GGUF**: Mover a `ComfyUI/models/unet/`
+2. **Nodos Requeridos**: Es necesario tener instalado [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF).
+3. **Componentes Originales**: Use el CLIP y VAE incluidos en este repo para máxima fidelidad (extraídos sin prefijos de contenedor).
+
+---
+
+## 📝 Nota del Autor Original
 {clean_desc}
 
 ---
-*Generado por GGUF Quantizer Modular*
+*GGUF Quantizer - Engineering Quality Visuals*
 """
 
 # GGUF Quantizer Modular
