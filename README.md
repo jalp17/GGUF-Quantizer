@@ -1,7 +1,8 @@
-# 🏭 GGUF Quantizer: Ecosistema Modular de Cuantización
+# GGUF Quantizer: Ecosistema Modular de Cuantización
 
 Este proyecto es un conjunto de herramientas para la extracción, conversión y cuantización de modelos de imagen (SDXL, Illustrious, Pony, Flux) al formato **GGUF**. Está diseñado para ser modular, local-first y compatible con el ecosistema de **ComfyUI-GGUF**.
 
+## Arquitectura del Proyecto
 ## Arquitectura del Proyecto
 
 El repositorio está organizado de forma modular para facilitar el mantenimiento y la portabilidad:
@@ -15,6 +16,7 @@ El repositorio está organizado de forma modular para facilitar el mantenimiento
 - **`core/`**: Parches de `llama.cpp`.
 - **`process.py`**: El punto de entrada principal para ejecuciones en máquina local.
 
+## Instalación y Preparación
 ## Instalación y Preparación
 
 ### 1. Requisitos de Python
@@ -31,6 +33,7 @@ CIVITAI_API_KEY=tu_api_key_de_civitai
 ```
 
 ## Compilación de llama.cpp (Versión Parcheada)
+## Compilación de llama.cpp (Versión Parcheada)
 
 Para que el proceso funcione, debes compilar `llama.cpp` utilizando los archivos fuente de la carpeta `core/`.
 
@@ -44,6 +47,7 @@ cmake .. -G "Ninja" -DGGML_CUDA=ON  # O la opción que prefieras
 cmake --build . --config Release --target llama-quantize
 ```
 
+## Uso Local
 ## Uso Local
 
 El script `process.py` es el punto de entrada principal. Soporta URLs directas o archivos de texto.
@@ -71,6 +75,7 @@ El script se encargará de:
 4. Generar las cuantizaciones seleccionadas.
 5. Subir todo a un nuevo repositorio en tu cuenta de Hugging Face con un **README.md** (si no se usa `--no-upload`).
 
+## Créditos
 ## Créditos
 Este proyecto esta basado en:
 - **[llama.cpp](https://github.com/ggerganov/llama.cpp)**: El motor de cuantización.
