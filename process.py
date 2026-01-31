@@ -12,6 +12,7 @@ def main():
     
     # Parámetros de proceso
     parser.add_argument("--no-upload", action="store_true", help="No subir archivos a Hugging Face (solo proceso local)")
+    parser.add_argument("--readme-only", action="store_true", help="Solo actualizar el README en el repo (no cuantiza)")
     parser.add_argument("-q", "--quants", help="Niveles de cuantización separados por comas (ej: Q4_K_M,Q8_0)")
     
     args = parser.parse_args()
@@ -37,19 +38,19 @@ def main():
     custom_quants = None
     if args.quants:
         custom_quants = [q.strip() for q in args.quants.split(",")]
-        print(f"⚖️ Usando niveles de cuantización personalizados: {custom_quants}")
 
     # Iniciar Quantizer
     quantizer = GGUFQuantizer()
     upload_enabled = not args.no_upload
     
-    print(f"🚀 Iniciando proceso para {len(all_links)} modelos...")
-    if not upload_enabled:
-        print("⚠️ Modo LOCAL-ONLY activado. Los archivos no se subirán a Hugging Face.")
-
+    print(f"🚀 Iniciando {'ACTUALIZACIÓN DE DOCS' if args.readme_only else 'PROCESO'} para {len(all_links)} modelos...")
+    
     for link in all_links:
         try:
-            quantizer.process(link, upload_to_hf=upload_enabled, custom_quants=custom_quants)
+            if args.readme_only:
+                quantizer.update_readme(link, custom_quants=custom_quants)
+            else:
+                quantizer.process(link, upload_to_hf=upload_enabled, custom_quants=custom_quants)
         except Exception as e:
             print(f"❌ Falló procesamiento de {link}: {e}")
 

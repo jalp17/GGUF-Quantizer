@@ -157,6 +157,24 @@ class GGUFQuantizer:
                 for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
 
+    def update_readme(self, url, custom_quants=None):
+        print(f"📝 Actualizando solo documentación para: {url}")
+        meta = CivitaiClient.get_metadata(url)
+        if not meta: return
+        
+        safe_name = make_safe_name(meta['name'])
+        repo_id = f"{Config.HF_USER}/{safe_name}-GGUF"
+        quants = custom_quants if custom_quants else Config.QUANTS
+        
+        readme = Documentation.generate_readme(meta, quants)
+        self.api.upload_file(
+            path_or_fileobj=readme.encode("utf-8"), 
+            path_in_repo="README.md", 
+            repo_id=repo_id, 
+            token=Config.HF_TOKEN
+        )
+        print(f"✅ README actualizado en: {repo_id}")
+
     def process(self, url, upload_to_hf=True, custom_quants=None):
         print(f"\n🌟 Procesando: {url}")
         meta = CivitaiClient.get_metadata(url)
