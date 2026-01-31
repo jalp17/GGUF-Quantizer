@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [
-    { name = "GGUF-Factory User" }
+    { name = "jalp17" }
 ]
 dependencies = [
     "torch",
