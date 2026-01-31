@@ -255,12 +255,16 @@ class GGUFQuantizer:
                 self.api.upload_file(path_or_fileobj=readme.encode("utf-8"), path_in_repo="README.md", repo_id=repo_id, token=Config.HF_TOKEN)
 
         finally:
-            # Limpieza garantizada de archivos pesados
-            print(f"🧹 Limpiando archivos temporales de: {meta['name']}...")
-            if os.path.exists(raw_model):
-                os.remove(raw_model)
-            if os.path.exists(fp16_path):
-                os.remove(fp16_path)
-            if os.path.exists(comp_dir):
-                shutil.rmtree(comp_dir)
+            if upload_to_hf:
+                # Limpieza garantizada de archivos pesados solo si se suben a HF
+                print(f"🧹 Limpiando archivos temporales de: {meta['name']}...")
+                if os.path.exists(raw_model):
+                    os.remove(raw_model)
+                if os.path.exists(fp16_path):
+                    os.remove(fp16_path)
+                if os.path.exists(comp_dir):
+                    shutil.rmtree(comp_dir)
+            else:
+                print(f"💾 Modo local (--no-upload): Se conservan todos los archivos.")
+                
             print(f"✅ Finalizado procesamiento de: {meta['name']}")
