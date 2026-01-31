@@ -4,3 +4,5 @@ tqdm
 requests
 huggingface_hub
 python-dotenv
+gguf
+numpy
