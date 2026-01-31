@@ -75,7 +75,5 @@ El script se encargará de:
 Este proyecto esta basado en:
 - **[llama.cpp](https://github.com/ggerganov/llama.cpp)**: El motor de cuantización.
 - **[ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF)**: La implementación de referencia para GGUF en Stable Diffusion.
-- **GGUF Quantizer**: Automatización y refinamiento por Antigravity (Advanced Agentic Coding).
-
 ---
 *GGUF Quantizer - Comprimiendo la inteligencia artificial, píxel a píxel.*
