@@ -1,7 +1,21 @@
 diff --git a/src/llama-arch.cpp b/src/llama-arch.cpp
-index a54bc19..ab907e9 100644
---- a/a/src/llama-arch.cpp
-+++ b/b/src/llama-arch.cpp
+index 0000000..1111111
+--- a/src/llama-arch.cpp
++++ b/src/llama-arch.cpp
+@@ -10,6 +10,13 @@
+     { LLM_ARCH_BERT,            "bert"            },
+     { LLM_ARCH_NOMIC_BERT,      "nomic-bert"      },
+     { LLM_ARCH_BLOOM,           "bloom"           },
++    { LLM_ARCH_SDXL,            "sdxl"            },
++    { LLM_ARCH_SD1,             "sd1"             },
++    { LLM_ARCH_SD3,             "sd3"             },
++    { LLM_ARCH_FLUX,            "flux"            },
++    { LLM_ARCH_AURORA,          "aura"            },
++    { LLM_ARCH_LTXV,            "ltxv"            },
++    { LLM_ARCH_LUMINA,          "lumina2"         },
+     { LLM_ARCH_GPT2,            "gpt2"            },
+     { LLM_ARCH_GPTJ,            "gptj"            },
+     { LLM_ARCH_GPTNEOX,         "gptneox"         },
 @@ -2290,7 +2290,9 @@ static std::set<llm_tensor> llm_get_tensor_names(llm_arch arch) {
                  LLM_TENSOR_FFN_UP,
              };
@@ -12,4 +26,22 @@ index a54bc19..ab907e9 100644
 +            };
      }
  }
- 
+
+diff --git a/src/llama-arch.h b/src/llama-arch.h
+index 0000000..2222222
+--- a/src/llama-arch.h
++++ b/src/llama-arch.h
+@@ -10,6 +10,13 @@
+     LLM_ARCH_BERT,
+     LLM_ARCH_NOMIC_BERT,
+     LLM_ARCH_BLOOM,
++    LLM_ARCH_SDXL,
++    LLM_ARCH_SD1,
++    LLM_ARCH_SD3,
++    LLM_ARCH_FLUX,
++    LLM_ARCH_AURORA,
++    LLM_ARCH_LTXV,
++    LLM_ARCH_LUMINA,
+     LLM_ARCH_GPT2,
+     LLM_ARCH_GPTJ,
+     LLM_ARCH_GPTNEOX,

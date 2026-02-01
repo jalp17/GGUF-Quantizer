@@ -35,7 +35,8 @@ class Config:
     
     # Rutas de herramientas (asume que llama.cpp está compilado en la raíz o subcarpeta)
     # Ajustar según SO (Windows usa .exe)
-    QUANTIZE_BIN = os.path.join(ROOT_DIR, "llama.cpp", "build", "bin", "llama-quantize")
+    # Rutas de herramientas
+    QUANTIZE_BIN = os.getenv('QUANTIZE_BIN', os.path.join(ROOT_DIR, "llama.cpp", "build", "bin", "llama-quantize"))
     if os.name == 'nt' and not QUANTIZE_BIN.endswith(".exe"):
         QUANTIZE_BIN += ".exe"
         
@@ -165,6 +166,16 @@ class GGUFQuantizer:
         self.api = HfApi()
         os.makedirs(Config.INPUT_DIR, exist_ok=True)
         os.makedirs(Config.OUTPUT_DIR, exist_ok=True)
+        self._validate_env()
+
+    def _validate_env(self):
+        """Valida que las herramientas necesarias estén disponibles."""
+        if not os.path.exists(Config.QUANTIZE_BIN):
+            print(f"⚠️ Advertencia: No se encontró el binario llama-quantize en {Config.QUANTIZE_BIN}")
+            print("   Asegúrate de ejecutar setup.sh/ps1 y compilar llama.cpp.")
+        
+        if not os.path.exists(Config.CONVERT_SCRIPT):
+            print(f"❌ Error Crítico: No se encontró el script de conversión en {Config.CONVERT_SCRIPT}")
 
     def download_file(self, url, dest):
         print(f"📥 Descargando a: {dest}...")
