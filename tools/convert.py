@@ -346,6 +346,14 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
     if ftype_gguf is not None:
         writer.add_file_type(ftype_gguf)
 
+    # Inyectar metadatos obligatorios para arquitecturas de imagen (evita SIGABRT en llama.cpp)
+    if model_arch.arch in ["sdxl", "sd1", "sd3", "flux"]:
+        # Valores estándar para que el cargador de llama.cpp no explote
+        writer.add_uint32(f"{model_arch.arch}.context_length", 77)
+        writer.add_uint32(f"{model_arch.arch}.embedding_length", 768 if model_arch.arch == "sd1" else 2048)
+        writer.add_uint32(f"{model_arch.arch}.block_count", 12 if model_arch.arch == "sd1" else 20)
+        logging.info(f"Inyectando metadatos para {model_arch.arch}...")
+
     handle_tensors(writer, state_dict, model_arch)
     writer.write_header_to_file(path=dst_path)
     writer.write_kv_data_to_file()
