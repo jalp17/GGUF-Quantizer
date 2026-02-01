@@ -41,3 +41,19 @@ index 72490a8..2258af1 100644
              default:
                  throw std::runtime_error("unknown architecture");
          }
+@@ -8200,6 +8216,15 @@ llama_rope_type llama_model_rope_type(const llama_model * model) {
+         case LLM_ARCH_QWEN3NEXT:
+         case LLM_ARCH_MIMO2:
+             return LLAMA_ROPE_TYPE_NEOX;
++
++        case LLM_ARCH_SDXL:
++        case LLM_ARCH_SD1:
++        case LLM_ARCH_SD3:
++        case LLM_ARCH_FLUX:
++        case LLM_ARCH_AURORA:
++        case LLM_ARCH_LTXV:
++        case LLM_ARCH_LUMINA:
++            return LLAMA_ROPE_TYPE_NONE;
+ 
+         case LLM_ARCH_QWEN2VL:
+             return LLAMA_ROPE_TYPE_MROPE;
