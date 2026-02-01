@@ -1,7 +1,7 @@
 diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
 index 1988d16..8264d17 100644
---- a/a/ggml/include/ggml.h
-+++ b/b/ggml/include/ggml.h
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
 @@ -226,7 +226,7 @@
  #define GGML_MAX_OP_PARAMS      64
  

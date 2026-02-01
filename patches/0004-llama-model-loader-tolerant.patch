@@ -1,7 +1,7 @@
 diff --git a/src/llama-model-loader.cpp b/src/llama-model-loader.cpp
 index 1501e39..b878a71 100644
---- a/a/src/llama-model-loader.cpp
-+++ b/b/src/llama-model-loader.cpp
+--- a/src/llama-model-loader.cpp
++++ b/src/llama-model-loader.cpp
 @@ -267,7 +267,7 @@ namespace GGUFMeta {
  
          if (kid < 0) {
