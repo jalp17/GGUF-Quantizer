@@ -39,6 +39,11 @@ def extract_components(input_path, output_dir):
     print("[*] Segmentando tensores...")
     for key in tqdm(keys):
         tensor = f.get_tensor(key)
+        
+        # Corrección crítica para bfloat16: NumPy a menudo falla al procesar este tipo
+        if tensor.dtype == torch.bfloat16:
+            tensor = tensor.to(torch.float16)
+
         found = False
         
         for name, cfg in configs.items():
