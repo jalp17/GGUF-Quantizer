@@ -2,7 +2,7 @@ diff --git a/src/llama-model.cpp b/src/llama-model.cpp
 index 72490a8..2258af1 100644
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
-@@ -467,7 +467,9 @@ void llama_model::load_stats(llama_model_loader & ml) {
+@@ -483,7 +483,9 @@ void llama_model::load_stats(llama_model_loader & ml) {
  void llama_model::load_arch(llama_model_loader & ml) {
      arch = ml.get_arch();
      if (arch == LLM_ARCH_UNKNOWN) {
@@ -13,7 +13,7 @@ index 72490a8..2258af1 100644
      }
  }
  
-@@ -512,6 +514,13 @@ void llama_model::load_hparams(llama_model_loader & ml) {
+@@ -636,6 +638,13 @@ void llama_model::load_hparams(llama_model_loader & ml) {
  
      // arch-specific KVs
      switch (arch) {
@@ -27,8 +27,8 @@ index 72490a8..2258af1 100644
          case LLM_ARCH_LLAMA:
          case LLM_ARCH_LLAMA_EMBED:
              {
-@@ -6900,6 +6900,13 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
-                         layer.ffn_up   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd,   hparams.n_ff(i)}, 0);
+@@ -6900,6 +6909,13 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
+                         layer.ffn_up   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd,   n_ff}, 0);
                      }
                  } break;
 +            case LLM_ARCH_SDXL:
