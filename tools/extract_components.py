@@ -10,7 +10,7 @@ def extract_components(input_path, output_dir):
     print(f"[*] Analizando modelo: {os.path.basename(input_path)}")
     
     try:
-        f = safe_open(input_path, framework="numpy", device="cpu")
+        f = safe_open(input_path, framework="pt", device="cpu")
         keys = f.keys()
     except Exception as e:
         print(f"[!] Error al abrir el archivo: {e}")
@@ -38,8 +38,7 @@ def extract_components(input_path, output_dir):
     
     print("[*] Segmentando tensores...")
     for key in tqdm(keys):
-        tensor_np = f.get_tensor(key)
-        tensor = torch.from_numpy(tensor_np)
+        tensor = f.get_tensor(key)
         found = False
         
         for name, cfg in configs.items():
