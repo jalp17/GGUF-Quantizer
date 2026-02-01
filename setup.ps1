@@ -7,6 +7,8 @@ param (
 
 $RepoUrl = "https://github.com/ggerganov/llama.cpp.git"
 $TargetDir = "llama.cpp"
+# LTS Base Commit (v1.2.1 LTS - Master Sync 2026-02-01)
+$LtsHash = "2634ed207a17db1a54bd8df0555bd8499a6ab691"
 
 Write-Host "=== GGUF-Quantizer Setup (Windows) ===" -ForegroundColor Cyan
 
@@ -16,10 +18,17 @@ if ($ClearCache) {
 }
 
 if (-not (Test-Path $TargetDir)) {
-    Write-Host "Cloning llama.cpp..."
-    git clone --depth 1 $RepoUrl $TargetDir
-} else {
-    Write-Host "Directory $TargetDir already exists. Skipping clone."
+    Write-Host "Cloning llama.cpp (LTS Version)..."
+    git clone $RepoUrl $TargetDir
+    Set-Location $TargetDir
+    git checkout $LtsHash
+    Set-Location ..
+}
+else {
+    Write-Host "Directory $TargetDir already exists. Ensuring it's on LTS version..."
+    Set-Location $TargetDir
+    git checkout $LtsHash
+    Set-Location ..
 }
 
 Set-Location $TargetDir

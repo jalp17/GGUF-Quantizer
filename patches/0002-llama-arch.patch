@@ -2,38 +2,41 @@ diff --git a/src/llama-arch.cpp b/src/llama-arch.cpp
 index 0000000..1111111
 --- a/src/llama-arch.cpp
 +++ b/src/llama-arch.cpp
-@@ -10,6 +10,13 @@
-     { LLM_ARCH_BERT,            "bert"            },
-     { LLM_ARCH_NOMIC_BERT,      "nomic-bert"      },
-     { LLM_ARCH_BLOOM,           "bloom"           },
-+    { LLM_ARCH_SDXL,            "sdxl"            },
-+    { LLM_ARCH_SD1,             "sd1"             },
-+    { LLM_ARCH_SD3,             "sd3"             },
-+    { LLM_ARCH_FLUX,            "flux"            },
-+    { LLM_ARCH_AURORA,          "aura"            },
-+    { LLM_ARCH_LTXV,            "ltxv"            },
-+    { LLM_ARCH_LUMINA,          "lumina2"         },
-     { LLM_ARCH_GPT2,            "gpt2"            },
-     { LLM_ARCH_GPTJ,            "gptj"            },
-     { LLM_ARCH_GPTNEOX,         "gptneox"         },
-@@ -2290,7 +2290,9 @@ static std::set<llm_tensor> llm_get_tensor_names(llm_arch arch) {
-                 LLM_TENSOR_FFN_UP,
+@@ -28,6 +28,13 @@ static const std::map<llm_arch, const char *> LLM_ARCH_NAMES = {
+     { LLM_ARCH_JINA_BERT_V2,     "jina-bert-v2"     },
+     { LLM_ARCH_JINA_BERT_V3,     "jina-bert-v3"     },
+     { LLM_ARCH_BLOOM,            "bloom"            },
++    { LLM_ARCH_SDXL,             "sdxl"             },
++    { LLM_ARCH_SD1,              "sd1"              },
++    { LLM_ARCH_SD3,              "sd3"              },
++    { LLM_ARCH_FLUX,             "flux"             },
++    { LLM_ARCH_AURORA,           "aura"             },
++    { LLM_ARCH_LTXV,             "ltxv"             },
++    { LLM_ARCH_LUMINA,           "lumina2"          },
+     { LLM_ARCH_STABLELM,         "stablelm"         },
+     { LLM_ARCH_QWEN,             "qwen"             },
+     { LLM_ARCH_QWEN2,            "qwen2"            },
+@@ -2370,6 +2377,13 @@ static std::set<llm_tensor> llm_get_tensor_names(llm_arch arch) {
              };
-         default:
--            GGML_ABORT("unknown architecture for tensor mapping");
-+            return {
-+                LLM_TENSOR_TOKEN_EMBD,
-+            };
-     }
- }
-
+         case LLM_ARCH_GPTJ:
+         case LLM_ARCH_UNKNOWN:
++        case LLM_ARCH_SDXL:
++        case LLM_ARCH_SD1:
++        case LLM_ARCH_SD3:
++        case LLM_ARCH_FLUX:
++        case LLM_ARCH_AURORA:
++        case LLM_ARCH_LTXV:
++        case LLM_ARCH_LUMINA:
+             return {
+                 LLM_TENSOR_TOKEN_EMBD,
+             };
 diff --git a/src/llama-arch.h b/src/llama-arch.h
 index 0000000..2222222
 --- a/src/llama-arch.h
 +++ b/src/llama-arch.h
-@@ -10,6 +10,13 @@
-     LLM_ARCH_BERT,
-     LLM_ARCH_NOMIC_BERT,
+@@ -23,6 +23,13 @@ enum llm_arch {
+     LLM_ARCH_JINA_BERT_V2,
+     LLM_ARCH_JINA_BERT_V3,
      LLM_ARCH_BLOOM,
 +    LLM_ARCH_SDXL,
 +    LLM_ARCH_SD1,
@@ -42,6 +45,6 @@ index 0000000..2222222
 +    LLM_ARCH_AURORA,
 +    LLM_ARCH_LTXV,
 +    LLM_ARCH_LUMINA,
-     LLM_ARCH_GPT2,
-     LLM_ARCH_GPTJ,
-     LLM_ARCH_GPTNEOX,
+     LLM_ARCH_STABLELM,
+     LLM_ARCH_QWEN,
+     LLM_ARCH_QWEN2,

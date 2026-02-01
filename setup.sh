@@ -5,6 +5,8 @@
 
 REPO_URL="https://github.com/ggerganov/llama.cpp.git"
 TARGET_DIR="llama.cpp"
+# LTS Base Commit (v1.2.1 LTS - Master Sync 2026-02-01)
+LTS_HASH="2634ed207a17db1a54bd8df0555bd8499a6ab691"
 CLEAR_CACHE=false
 
 # Parse arguments
@@ -22,10 +24,16 @@ if [ "$CLEAR_CACHE" = true ]; then
 fi
 
 if [ ! -d "$TARGET_DIR" ]; then
-    echo "Cloning llama.cpp..."
-    git clone --depth 1 "$REPO_URL" "$TARGET_DIR"
+    echo "Cloning llama.cpp (LTS Version)..."
+    git clone "$REPO_URL" "$TARGET_DIR"
+    cd "$TARGET_DIR" || exit
+    git checkout "$LTS_HASH"
+    cd ..
 else
-    echo "Directory $TARGET_DIR already exists. Skipping clone."
+    echo "Directory $TARGET_DIR already exists. Ensuring it's on LTS version..."
+    cd "$TARGET_DIR" || exit
+    git checkout "$LTS_HASH"
+    cd ..
 fi
 
 cd $TARGET_DIR || exit

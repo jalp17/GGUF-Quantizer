@@ -2,33 +2,33 @@ diff --git a/src/llama-model.cpp b/src/llama-model.cpp
 index 72490a8..2258af1 100644
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
-@@ -483,7 +482,9 @@ void llama_model::load_stats(llama_model_loader & ml) {
+@@ -467,7 +467,9 @@ void llama_model::load_stats(llama_model_loader & ml) {
  void llama_model::load_arch(llama_model_loader & ml) {
      arch = ml.get_arch();
      if (arch == LLM_ARCH_UNKNOWN) {
 -        throw std::runtime_error("unknown model architecture: '" + ml.get_arch_name() + "'");
 +        LLAMA_LOG_WARN("%s: unknown model architecture: '%s' - continuing in tolerant mode\n", __func__, ml.get_arch_name().c_str());
 +        // tolerate unknown architectures for non-LLM models (e.g. SDXL image models)
-+    }
++        // arch remains LLM_ARCH_UNKNOWN and loading proceeds to tensors/hparams
+     }
  }
  
-@@ -2450,6 +2468,14 @@ void llama_model::load_hparams(llama_model_loader & ml) {
-                     default: type = LLM_TYPE_UNKNOWN;
-                 }
-             } break;
+@@ -512,6 +514,13 @@ void llama_model::load_hparams(llama_model_loader & ml) {
+ 
+     // arch-specific KVs
+     switch (arch) {
 +        case LLM_ARCH_SDXL:
 +        case LLM_ARCH_FLUX:
 +        case LLM_ARCH_SD3:
 +        case LLM_ARCH_UNKNOWN:
 +            {
 +                LLAMA_LOG_WARN("%s: image model architecture, using f16 defaults for quantization\n", __func__);
-+                type = LLM_TYPE_UNKNOWN;
 +            } break;
-         default: throw std::runtime_error("unsupported model architecture");
-     }
- 
-@@ -6971,6 +6998,13 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
-                         layer.ffn_up   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd,   n_ff}, 0);
+         case LLM_ARCH_LLAMA:
+         case LLM_ARCH_LLAMA_EMBED:
+             {
+@@ -6900,6 +6900,13 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
+                         layer.ffn_up   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd,   hparams.n_ff(i)}, 0);
                      }
                  } break;
 +            case LLM_ARCH_SDXL:
