@@ -72,7 +72,8 @@ def extract_components(input_path, output_dir):
         # Aunque aquí el problema es el 'data' dict que crece.
         # Si la RAM es crítica, guardaremos el UNET antes que el resto.
 
-    # Guardar componentes
+    # Guardar componentes y recolectar rutas
+    extracted_paths = {}
     for name, cfg in configs.items():
         sd = cfg["data"]
         if sd:
@@ -80,9 +81,12 @@ def extract_components(input_path, output_dir):
             print(f"[*] Guardando {name} ({len(sd)} tensores)...")
             save_file(sd, out_file)
             print(f"[+] Extraído: {name} -> {out_file}")
+            extracted_paths[name] = out_file
             # Liberar memoria tras guardar cada componente
             cfg["data"] = {}
             gc.collect()
+    
+    return extracted_paths
 
 if __name__ == "__main__":
     import sys
