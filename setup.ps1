@@ -1,3 +1,7 @@
+param (
+    [switch]$ClearCache = $false
+)
+
 # GGUF-Quantizer Setup Script for Windows
 # This script clones llama.cpp and applies custom image quantization patches.
 
@@ -5,6 +9,11 @@ $RepoUrl = "https://github.com/ggerganov/llama.cpp.git"
 $TargetDir = "llama.cpp"
 
 Write-Host "=== GGUF-Quantizer Setup (Windows) ===" -ForegroundColor Cyan
+
+if ($ClearCache) {
+    Write-Host "Cleaning ccache..." -ForegroundColor Yellow
+    ccache -C
+}
 
 if (-not (Test-Path $TargetDir)) {
     Write-Host "Cloning llama.cpp..."
@@ -19,6 +28,10 @@ Write-Host "Applying patches..."
 $Patches = Get-ChildItem -Path "..\patches\*.patch" | Sort-Object Name
 
 foreach ($patch in $Patches) {
+    if ($patch.Length -eq 0) {
+        Write-Host "Skipping empty patch: $($patch.Name)" -ForegroundColor Gray
+        continue
+    }
     Write-Host "Applying $($patch.Name)..."
     git apply --verbose $patch.FullName
     if ($LASTEXITCODE -ne 0) {

@@ -5,12 +5,25 @@
 
 REPO_URL="https://github.com/ggerganov/llama.cpp.git"
 TARGET_DIR="llama.cpp"
+CLEAR_CACHE=false
 
-echo "=== GGUF-Quantizer Setup (Linux/macOS) ==="
+# Parse arguments
+for arg in "$@"; do
+    if [ "$arg" == "--clear-cache" ]; then
+        CLEAR_CACHE=true
+    fi
+done
+
+echo -e "\033[0;36m=== GGUF-Quantizer Setup (Linux/macOS) ===\033[0m"
+
+if [ "$CLEAR_CACHE" = true ]; then
+    echo -e "\033[0;33mCleaning ccache...\033[0m"
+    ccache -C
+fi
 
 if [ ! -d "$TARGET_DIR" ]; then
     echo "Cloning llama.cpp..."
-    git clone --depth 1 $REPO_URL $TARGET_DIR
+    git clone --depth 1 "$REPO_URL" "$TARGET_DIR"
 else
     echo "Directory $TARGET_DIR already exists. Skipping clone."
 fi
