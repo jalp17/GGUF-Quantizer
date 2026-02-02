@@ -49,28 +49,69 @@ class CivitaiClient:
     @staticmethod
     def get_metadata(url):
         try:
-            parts = url.strip().split('/')
-            model_id = next((parts[i+1] for i, p in enumerate(parts) if p == 'models'), None)
-            if not model_id and 'modelVersionId=' in url:
-                model_id = url.split('modelVersionId=')[1].split('&')[0]
-            if not model_id: return None
+            url = url.strip()
+            model_id = None
+            version_id = None
+
+            # 1. Extraer IDs de la URL mediante Regex
+            # Formato: /models/1234
+            model_match = re.search(r'/models/(\d+)', url)
+            if model_match: model_id = model_match.group(1)
+
+            # Formato: modelVersionId=5678 o /models/1234?modelVersionId=5678
+            version_match = re.search(r'modelVersionId=(\d+)', url)
+            if version_match: version_id = version_match.group(1)
+
+            # Formato: /api/download/models/5678 (Descarga directa)
+            api_match = re.search(r'/api/download/models/(\d+)', url)
+            if api_match: version_id = api_match.group(1)
+
+            if not model_id and not version_id:
+                print(f"⚠️ No se pudo extraer ID de la URL: {url}")
+                return None
 
             headers = {"Authorization": f"Bearer {Config.CIVITAI_API_KEY}"} if Config.CIVITAI_API_KEY else {}
-            resp = requests.get(f"https://civitai.com/api/v1/models/{model_id}", headers=headers)
-            if resp.status_code != 200: return None
-
-            data = resp.json()
-            ver = data['modelVersions'][0]
             
+            # 2. Si tenemos Version ID, resolvemos sus metadatos específicos primero
+            version_data = None
+            if version_id:
+                resp_v = requests.get(f"https://civitai.com/api/v1/model-versions/{version_id}", headers=headers)
+                if resp_v.status_code == 200:
+                    version_data = resp_v.json()
+                    model_id = str(version_data['modelId']) # Asegurar que tenemos el model_id correcto
+                else:
+                    print(f"⚠️ Error al obtener versión {version_id}: {resp_v.status_code}")
+                    if not model_id: return None
+
+            # 3. Obtener metadatos globales del modelo
+            resp_m = requests.get(f"https://civitai.com/api/v1/models/{model_id}", headers=headers)
+            if resp_m.status_code != 200:
+                print(f"⚠️ Error al obtener modelo {model_id}: {resp_m.status_code}")
+                return None
+            
+            model_data = resp_m.json()
+            
+            # 4. Seleccionar la versión correcta (priorizar la solicitada o la última)
+            if version_data:
+                ver = version_data
+            else:
+                # Si no se especificó versión, usar la primera (la más reciente)
+                ver = model_data['modelVersions'][0]
+                version_id = str(ver['id'])
+
             return {
                 "id": model_id,
-                "name": data['name'],
-                "author": data.get('creator', {}).get('username', 'Unknown'),
+                "version_id": version_id,
+                "name": model_data['name'],
+                "version_name": ver.get('name', 'Main'),
+                "author": model_data.get('creator', {}).get('username', 'Unknown'),
                 "download_url": f"{ver['downloadUrl']}?token={Config.CIVITAI_API_KEY}" if Config.CIVITAI_API_KEY else ver['downloadUrl'],
-                "description": data.get("description", ""),
+                "description": model_data.get("description", ""),
                 "baseModel": ver.get("baseModel", "SDXL")
             }
-        except Exception: return None
+        except Exception as e:
+            print(f"❌ Error en CivitaiClient: {e}")
+            return None
 
 # ==========================================
 # GENERADOR DE DOCUMENTACIÓN (PREMIUM)
