@@ -5,6 +5,7 @@ import torch
 import logging
 import argparse
 from tqdm import tqdm
+from safetensors import safe_open
 from safetensors.torch import load_file, save_file
 
 QUANTIZATION_THRESHOLD = 1024
@@ -235,7 +236,6 @@ def load_state_dict(path):
             raise RuntimeError(f"pt subkey load failed: {state_dict.keys()}")
     else:
         # Usar carga perezosa para safetensors
-        from safetensors import safe_open
         state_dict = LazyStateDict(path)
 
     return strip_prefix(state_dict)
