@@ -263,9 +263,14 @@ class GGUFQuantizer:
             # 1. Descarga
             self.download_file(meta['download_url'], raw_model)
             
-            # 2. Extracción
+            # 2. Extracción (RAM-Optimized)
             from tools.extract_components import extract_components
             extracted = extract_components(raw_model, comp_dir)
+            
+            # LIBERAR DISCO: Borrar modelo original tras extracción
+            if os.path.exists(raw_model):
+                print(f"🧹 Liberando espacio: Eliminando modelo original {os.path.basename(raw_model)}")
+                os.remove(raw_model)
             
             # 3. Subir Componentes No-Unet (Si procede)
             if upload_to_hf:

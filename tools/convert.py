@@ -210,6 +210,20 @@ def strip_prefix(state_dict):
 
     return sd
 
+class LazyStateDict:
+    def __init__(self, path):
+        self.f = safe_open(path, framework="pt", device="cpu")
+        self.keys_list = self.f.keys()
+    def keys(self): return self.keys_list
+    def items(self):
+        for k in self.keys_list:
+            yield k, self.get_tensor(k)
+    def __getitem__(self, key): return self.get_tensor(key)
+    def __contains__(self, key): return key in self.keys_list
+    def get_tensor(self, key):
+        tensor = self.f.get_tensor(key)
+        return tensor
+
 def load_state_dict(path):
     if any(path.endswith(x) for x in [".ckpt", ".pt", ".bin", ".pth"]):
         state_dict = torch.load(path, map_location="cpu", weights_only=True)
@@ -220,7 +234,9 @@ def load_state_dict(path):
         if len(state_dict) < 20:
             raise RuntimeError(f"pt subkey load failed: {state_dict.keys()}")
     else:
-        state_dict = load_file(path)
+        # Usar carga perezosa para safetensors
+        from safetensors import safe_open
+        state_dict = LazyStateDict(path)
 
     return strip_prefix(state_dict)
 

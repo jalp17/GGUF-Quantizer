@@ -33,26 +33,18 @@ def extract_components(input_path, output_dir):
 
     os.makedirs(output_dir, exist_ok=True)
     
-    # Procesar componentes pequeños directamente en memoria r-r-r-r-am!
-    # El UNET lo procesaremos al final o de forma especial si es necesario
-    
-    print("[*] Segmentando tensores...")
+    # 1. Mapeo de claves por componente (sin cargar tensores todavía)
+    keys_map = {name: {} for name in configs.keys()}
+    print("[*] Mapeando estructura del modelo...")
     for key in tqdm(keys):
-        tensor = f.get_tensor(key)
-        
-        # Corrección crítica para bfloat16: NumPy a menudo falla al procesar este tipo
-        if tensor.dtype == torch.bfloat16:
-            tensor = tensor.to(torch.float16)
-
         found = False
-        
         for name, cfg in configs.items():
             for p in cfg.get("prefixes", []):
                 if key.startswith(p):
                     new_key = key[len(p):]
                     if name == "unet":
                         new_key = "model.diffusion_model." + new_key
-                    cfg["data"][new_key] = tensor
+                    keys_map[name][new_key] = key
                     found = True
                     break
             if found: break
@@ -61,30 +53,41 @@ def extract_components(input_path, output_dir):
                 for ek in cfg["extra_keys"]:
                     if ek in key:
                         if name == "clip_l" and ("embedders.0" in key or "cond_stage" in key):
-                            cfg["data"][key.split('.')[-1]] = tensor
+                            keys_map[name][key.split('.')[-1]] = key
                             found = True
                         elif name == "clip_g" and "embedders.1" in key:
-                            cfg["data"][key.split('.')[-1]] = tensor
+                            keys_map[name][key.split('.')[-1]] = key
                             found = True
             if found: break
-        
-        # Si NO lo encontramos o tras procesar, liberamos si es necesario
-        # Aunque aquí el problema es el 'data' dict que crece.
-        # Si la RAM es crítica, guardaremos el UNET antes que el resto.
 
-    # Guardar componentes y recolectar rutas
+    # 2. Extracción secuencial (Componente por Componente) para ahorrar RAM
     extracted_paths = {}
-    for name, cfg in configs.items():
-        sd = cfg["data"]
-        if sd:
-            out_file = os.path.join(output_dir, f"{name}.safetensors")
-            print(f"[*] Guardando {name} ({len(sd)} tensores)...")
-            save_file(sd, out_file)
-            print(f"[+] Extraído: {name} -> {out_file}")
-            extracted_paths[name] = out_file
-            # Liberar memoria tras guardar cada componente
-            cfg["data"] = {}
-            gc.collect()
+    for name, m_keys in keys_map.items():
+        if not m_keys: continue
+        
+        print(f"[*] Procesando componente: {name} ({len(m_keys)} tensores)...")
+        component_data = {}
+        
+        # Extraer solo los tensores de este componente
+        for new_key, original_key in m_keys.items():
+            tensor = f.get_tensor(original_key)
+            if tensor.dtype == torch.bfloat16:
+                tensor = tensor.to(torch.float16)
+            component_data[new_key] = tensor
+            
+        # Guardar componente inmediatamente
+        out_file = os.path.join(output_dir, f"{name}.safetensors")
+        save_file(component_data, out_file)
+        print(f"[+] Extraído: {name} -> {out_file}")
+        extracted_paths[name] = out_file
+        
+        # Liberación agresiva de RAM
+        component_data.clear()
+        del component_data
+        gc.collect()
+        if torch.cuda.is_available(): torch.cuda.empty_cache()
+
+    return extracted_paths
     
     return extracted_paths
 
