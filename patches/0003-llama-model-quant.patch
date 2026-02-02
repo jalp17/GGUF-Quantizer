@@ -57,3 +57,18 @@ index 72490a8..2258af1 100644
  
          case LLM_ARCH_QWEN2VL:
              return LLAMA_ROPE_TYPE_MROPE;
+@@ -13340,6 +13365,14 @@ enum llama_status llama_model_quantize(
+ 
+     const auto & hparams = model.hparams;
+ 
++    if (model.arch == LLM_ARCH_UNKNOWN || 
++        model.arch == LLM_ARCH_SD1 || 
++        model.arch == LLM_ARCH_SDXL || 
++        model.arch == LLM_ARCH_SD3 || 
++        model.arch == LLM_ARCH_FLUX) {
++        LLAMA_LOG_WARN("%s: quantizing image architecture (non-LLM)\n", __func__);
++    } else 
++
+     if (model.arch == LLM_ARCH_UNKNOWN) {
+         LLAMA_LOG_ERROR("%s: failed to quantize: unsupported model architecture\n", __func__);
+         return 1;
