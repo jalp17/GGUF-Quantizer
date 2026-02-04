@@ -1,7 +1,7 @@
 diff --git a/src/llama-model.cpp b/src/llama-model.cpp
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
-@@ -483,9 +483,11 @@ void llama_model::load_stats(llama_model_loader & ml) {
+@@ -483,7 +483,8 @@ void llama_model::load_stats(llama_model_loader & ml) {
  void llama_model::load_arch(llama_model_loader & ml) {
      arch = ml.get_arch();
      if (arch == LLM_ARCH_UNKNOWN) {
@@ -11,6 +11,9 @@ diff --git a/src/llama-model.cpp b/src/llama-model.cpp
      }
  }
  
+@@ -490,6 +491,11 @@ void llama_model::load_arch(llama_model_loader & ml) {
+ }
+ 
  void llama_model::load_hparams(llama_model_loader & ml) {
 +    // For unknown architectures, skip hparams loading
 +    if (arch == LLM_ARCH_UNKNOWN) {
@@ -18,3 +21,5 @@ diff --git a/src/llama-model.cpp b/src/llama-model.cpp
 +        return;
 +    }
      const gguf_context * ctx = ml.meta.get();
+ 
+     // get metadata as string
