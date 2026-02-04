@@ -9,6 +9,7 @@ def main():
     # Argumentos de entrada
     parser.add_argument("links", nargs="*", help="URLs de CivitAI para procesar")
     parser.add_argument("-f", "--file", help="Archivo de texto con una URL por línea")
+    parser.add_argument("-m", "--model", help="URL o ID de un único modelo (alias para compatibilidad)")
     
     # Parámetros de proceso
     parser.add_argument("--no-upload", action="store_true", help="No subir archivos a Hugging Face (solo proceso local)")
@@ -18,7 +19,12 @@ def main():
     args = parser.parse_args()
     
     # Recopilar enlaces
-    all_links = args.links if args.links else []
+    all_links = []
+    if args.model:
+        all_links.append(args.model)
+    
+    if args.links:
+        all_links.extend(args.links)
     
     if args.file:
         if os.path.exists(args.file):
