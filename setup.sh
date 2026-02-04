@@ -48,6 +48,19 @@ for patch in ../patches/*.patch; do
     fi
 done
 
+# Apply robust python-based fix for LTS compatibility
+cd ..
+if [ -f "tools/apply_lts_fix.py" ]; then
+    echo "Applying robust LTS fix (Python)..."
+    python3 tools/apply_lts_fix.py
+    if [ $? -ne 0 ]; then
+        echo "Error applying robust fix."
+        exit 1
+    fi
+else
+    echo "Warning: tools/apply_lts_fix.py not found."
+fi
+
 echo ""
 echo "=== Success! ==="
 echo "Now you can build llama.cpp using your preferred method (cmake or make)."
