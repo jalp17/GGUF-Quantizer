@@ -40,6 +40,8 @@ cd $TARGET_DIR || exit
 
 echo "Applying patches..."
 for patch in ../patches/*.patch; do
+    echo "Sanitizing $patch..."
+    sed -i 's/\r$//' "$patch"
     echo "Applying $patch..."
     git apply --verbose --ignore-space-change --ignore-whitespace "$patch"
     if [ $? -ne 0 ]; then
