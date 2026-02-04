@@ -1,12 +1,19 @@
 import os
 import sys
+import re
 
 def patch_llama_model():
     target_file = "llama.cpp/src/llama-model.cpp"
     
     if not os.path.exists(target_file):
-        print(f"❌ Error: File {target_file} not found.")
-        sys.exit(1)
+        # Fallback for different CWD
+        if os.path.exists(f"../{target_file}"):
+            target_file = f"../{target_file}"
+        elif os.path.exists("src/llama-model.cpp"):
+            target_file = "src/llama-model.cpp"
+        else:
+            print(f"❌ Error: File {target_file} not found locally.")
+            sys.exit(1)
         
     print(f"🔧 Applying robust fix to {target_file}...")
     
@@ -14,40 +21,50 @@ def patch_llama_model():
         content = f.read()
         
     # Fix 1: load_arch throw -> warning
-    original_throw = 'throw std::runtime_error("unknown model architecture: \'\" + ml.get_arch_name() + \"\'");'
-    replacement_warn = 'LLAMA_LOG_WARN(\"%s: unknown architecture \'%s\' - proceeding in tolerant mode\\n\", __func__, ml.get_arch_name().c_str());'
+    # We search for the specific throw line.
+    # Pattern: throw std::runtime_error("unknown model architecture...
     
-    if original_throw in content:
-        content = content.replace(original_throw, replacement_warn)
-        print("   ✅ Patched load_arch (throw -> warning)")
-    elif replacement_warn in content:
-        print("   ⚠️ load_arch already patched")
+    if 'LLAMA_LOG_WARN("%s: unknown architecture' in content:
+         print("   ⚠️ load_arch already patched")
     else:
-        print("   ❌ Failed to find load_arch target pattern")
-        # Try a more loose match if exact string match fails (e.g. whitespace diffs)
-        # This is a fallback
-        pass
+        # Regex replacement for robust whitespace handling
+        pattern_arch = r'throw\s+std::runtime_error\s*\(\s*"unknown model architecture:.*?\);'
+        replacement_warn = 'LLAMA_LOG_WARN("%s: unknown architecture \'%s\' - proceeding in tolerant mode\\n", __func__, ml.get_arch_name().c_str());'
+        
+        new_content = re.sub(pattern_arch, replacement_warn, content, count=1)
+        
+        if new_content != content:
+            content = new_content
+            print("   ✅ Patched load_arch (throw -> warning)")
+        else:
+            print("   ❌ Failed to find load_arch throw pattern via Regex")
+            # Debug: print snippet where it should be
+            idx = content.find("unknown model architecture")
+            if idx != -1:
+                print(f"   Debug context: {content[idx-50:idx+50]}")
 
     # Fix 2: load_hparams early return
-    target_hparams = "void llama_model::load_hparams(llama_model_loader & ml) {"
-    replacement_hparams = """void llama_model::load_hparams(llama_model_loader & ml) {
+    # We simply insert the check at the beginning of the function
+    
+    func_sig = "void llama_model::load_hparams(llama_model_loader & ml) {"
+    
+    if "skipping hparams for unknown/image architecture" in content:
+        print("   ⚠️ load_hparams already patched")
+    elif func_sig in content:
+        replacement_code = """void llama_model::load_hparams(llama_model_loader & ml) {
     if (arch == LLM_ARCH_UNKNOWN) {
         LLAMA_LOG_WARN("%s: skipping hparams for unknown/image architecture\\n", __func__);
         return;
     }"""
-    
-    if target_hparams in content and "skipping hparams" not in content:
-        content = content.replace(target_hparams, replacement_hparams)
+        content = content.replace(func_sig, replacement_code)
         print("   ✅ Patched load_hparams (early return added)")
-    elif "skipping hparams" in content:
-        print("   ⚠️ load_hparams already patched")
     else:
-        print("   ❌ Failed to find load_hparams target pattern")
+        print(f"   ❌ Failed to find function signature: {func_sig}")
 
     with open(target_file, 'w', encoding='utf-8') as f:
         f.write(content)
         
-    print("✅ Robust patch applied successfully.")
+    print("✅ Robust patch process completed.")
 
 if __name__ == "__main__":
     patch_llama_model()
