@@ -32,6 +32,9 @@ if [ ! -d "$TARGET_DIR" ]; then
 else
     echo "Directory $TARGET_DIR already exists. Ensuring it's on LTS version..."
     cd "$TARGET_DIR" || exit
+    git reset --hard  # Discard previous patches/changes
+    git clean -fd     # Remove untracked files
+    git fetch origin  # Ensure we have the latest remote refs
     git checkout "$LTS_HASH"
     cd ..
 fi
