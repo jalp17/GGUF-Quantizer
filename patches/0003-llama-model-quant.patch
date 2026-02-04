@@ -11,9 +11,7 @@ diff --git a/src/llama-model.cpp b/src/llama-model.cpp
      }
  }
  
-@@ -490,6 +491,11 @@ void llama_model::load_arch(llama_model_loader & ml) {
- }
- 
+@@ -490,4 +491,9 @@ void llama_model::load_arch(llama_model_loader & ml) {
  void llama_model::load_hparams(llama_model_loader & ml) {
 +    // For unknown architectures, skip hparams loading
 +    if (arch == LLM_ARCH_UNKNOWN) {
