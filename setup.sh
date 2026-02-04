@@ -48,18 +48,7 @@ for patch in ../patches/*.patch; do
     fi
 done
 
-# Apply robust python-based fix for LTS compatibility
-cd ..
-if [ -f "tools/apply_lts_fix.py" ]; then
-    echo "Applying robust LTS fix (Python)..."
-    python3 tools/apply_lts_fix.py
-    if [ $? -ne 0 ]; then
-        echo "Error applying robust fix."
-        exit 1
-    fi
-else
-    echo "Warning: tools/apply_lts_fix.py not found."
-fi
+done
 
 echo ""
 echo "=== Success! ==="
