@@ -41,7 +41,7 @@ cd $TARGET_DIR || exit
 echo "Applying patches..."
 for patch in ../patches/*.patch; do
     echo "Applying $patch..."
-    git apply --verbose "$patch"
+    git apply --verbose --ignore-space-change --ignore-whitespace "$patch"
     if [ $? -ne 0 ]; then
         echo "Error applying $patch. Please check for conflicts."
         exit 1

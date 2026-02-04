@@ -1,9 +1,7 @@
 diff --git a/src/llama-model.cpp b/src/llama-model.cpp
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
-@@ -483,7 +483,8 @@ void llama_model::load_stats(llama_model_loader & ml) {
- void llama_model::load_arch(llama_model_loader & ml) {
-     arch = ml.get_arch();
+@@ -485,7 +485,8 @@ void llama_model::load_arch(llama_model_loader & ml) {
      if (arch == LLM_ARCH_UNKNOWN) {
 -        throw std::runtime_error("unknown model architecture: '" + ml.get_arch_name() + "'");
 +        // Allow unknown architectures (image models like SDXL, SD1, Flux)
@@ -11,7 +9,7 @@ diff --git a/src/llama-model.cpp b/src/llama-model.cpp
      }
  }
  
-@@ -490,4 +491,9 @@ void llama_model::load_arch(llama_model_loader & ml) {
+@@ -490,2 +491,7 @@ void llama_model::load_arch(llama_model_loader & ml) {
  void llama_model::load_hparams(llama_model_loader & ml) {
 +    // For unknown architectures, skip hparams loading
 +    if (arch == LLM_ARCH_UNKNOWN) {
@@ -19,5 +17,3 @@ diff --git a/src/llama-model.cpp b/src/llama-model.cpp
 +        return;
 +    }
      const gguf_context * ctx = ml.meta.get();
- 
-     // get metadata as string
