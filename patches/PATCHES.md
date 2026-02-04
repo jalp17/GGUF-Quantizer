@@ -22,7 +22,7 @@ Estos scripts descargarán la versión más reciente de `llama.cpp` y aplicarán
 
 ## Cómo aplicarlos manualmente
 
-Para aplicar estos parches a una versión fresca de `llama.cpp`:
+Para aplicar estos parches a una versión de `llama.cpp`:
 
 1.  Navega a la raíz de tu repositorio `llama.cpp`.
 2.  Ejecuta los siguientes comandos:
