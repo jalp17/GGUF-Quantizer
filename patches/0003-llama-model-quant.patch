@@ -1,28 +1,20 @@
 diff --git a/src/llama-model.cpp b/src/llama-model.cpp
-index original..patched 100644
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
-@@ -483,7 +483,9 @@ void llama_model::load_stats(llama_model_loader & ml) {
+@@ -483,9 +483,11 @@ void llama_model::load_stats(llama_model_loader & ml) {
  void llama_model::load_arch(llama_model_loader & ml) {
      arch = ml.get_arch();
      if (arch == LLM_ARCH_UNKNOWN) {
 -        throw std::runtime_error("unknown model architecture: '" + ml.get_arch_name() + "'");
-+        LLAMA_LOG_WARN("%s: unknown architecture '%s' - treating as image model (tolerant mode)\n", __func__, ml.get_arch_name().c_str());
-+        // Allow unknown architectures (SDXL, SD1, Flux, etc.) to proceed without throwing
-+        // The architecture remains LLM_ARCH_UNKNOWN and loading continues
++        // Allow unknown architectures (image models like SDXL, SD1, Flux)
++        LLAMA_LOG_WARN("%s: unknown architecture '%s' - proceeding in tolerant mode\n", __func__, ml.get_arch_name().c_str());
      }
  }
  
-@@ -2450,6 +2452,12 @@ void llama_model::load_hparams(llama_model_loader & ml) {
-                     default: type = LLM_TYPE_UNKNOWN;
-                 }
-             } break;
-+        case LLM_ARCH_UNKNOWN:
-+            {
-+                // Image models (SDXL, SD1, Flux, etc.) use unknown architecture
-+                LLAMA_LOG_WARN("%s: unknown/image architecture detected, using generic defaults\n", __func__);
-+                type = LLM_TYPE_UNKNOWN;
-+            } break;
-         default: throw std::runtime_error("unsupported model architecture");
-     }
- 
+ void llama_model::load_hparams(llama_model_loader & ml) {
++    // For unknown architectures, skip hparams loading
++    if (arch == LLM_ARCH_UNKNOWN) {
++        LLAMA_LOG_WARN("%s: skipping hparams for unknown/image architecture\n", __func__);
++        return;
++    }
+     const gguf_context * ctx = ml.meta.get();
