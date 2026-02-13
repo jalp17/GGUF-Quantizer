@@ -32,18 +32,18 @@ if [ ! -d "$TARGET_DIR" ]; then
 else
     echo "Directory $TARGET_DIR already exists. Ensuring it's on LTS version..."
     cd "$TARGET_DIR" || exit
-    git reset --hard  # Discard previous patches/changes
-    git clean -fd     # Remove untracked files
-    git fetch origin  # Ensure we have the latest remote refs
+    git reset --hard
+    git clean -fd
+    git fetch origin
     git checkout "$LTS_HASH"
     cd ..
 fi
 
-cd $TARGET_DIR || exit
+cd "$TARGET_DIR" || exit
 
 echo "Applying patches..."
 for patch in ../patches/*.patch; do
-    echo "Sanitizing $patch..."
+    echo "Sanitizing $patch (removing Windows line endings)..."
     sed -i 's/\r$//' "$patch"
     echo "Applying $patch..."
     git apply --verbose --ignore-space-change --ignore-whitespace "$patch"
@@ -51,8 +51,6 @@ for patch in ../patches/*.patch; do
         echo "Error applying $patch. Please check for conflicts."
         exit 1
     fi
-done
-
 done
 
 echo ""

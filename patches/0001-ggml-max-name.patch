@@ -1,5 +1,5 @@
 diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
-index 1988d16..8264d17 100644
+index 1988d16dc..8264d17ce 100644
 --- a/ggml/include/ggml.h
 +++ b/ggml/include/ggml.h
 @@ -226,7 +226,7 @@
