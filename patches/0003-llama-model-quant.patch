@@ -1,8 +1,8 @@
 diff --git a/src/llama-model.cpp b/src/llama-model.cpp
-index 72490a89b..4a8c4e444 100644
+index 72490a89b..07acfb083 100644
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
-@@ -483,11 +483,17 @@ void llama_model::load_stats(llama_model_loader & ml) {
+@@ -483,7 +483,8 @@ void llama_model::load_stats(llama_model_loader & ml) {
  void llama_model::load_arch(llama_model_loader & ml) {
      arch = ml.get_arch();
      if (arch == LLM_ARCH_UNKNOWN) {
@@ -12,12 +12,33 @@ index 72490a89b..4a8c4e444 100644
      }
  }
  
- void llama_model::load_hparams(llama_model_loader & ml) {
-+    // For unknown architectures, skip hparams loading
-+    if (arch == LLM_ARCH_UNKNOWN) {
-+        LLAMA_LOG_WARN("%s: skipping hparams for unknown/image architecture\n", __func__);
-+        return;
-+    }
-     const gguf_context * ctx = ml.meta.get();
+@@ -505,8 +506,16 @@ void llama_model::load_hparams(llama_model_loader & ml) {
+     ml.get_key(LLM_KV_GENERAL_NAME, name, false);
  
-     // get metadata as string
+     // everything past this point is not vocab-related
+-    // for CLIP models, we only need to load tensors, no hparams
+-    if (hparams.vocab_only || ml.get_arch() == LLM_ARCH_CLIP) {
++    // for CLIP and image diffusion models, we only need to load tensors, no hparams
++    if (hparams.vocab_only || ml.get_arch() == LLM_ARCH_CLIP
++            || arch == LLM_ARCH_UNKNOWN
++            || arch == LLM_ARCH_SDXL
++            || arch == LLM_ARCH_SD1
++            || arch == LLM_ARCH_SD3
++            || arch == LLM_ARCH_FLUX
++            || arch == LLM_ARCH_AURORA
++            || arch == LLM_ARCH_LTXV
++            || arch == LLM_ARCH_LUMINA) {
+         return;
+     }
+ 
+@@ -2450,7 +2459,9 @@ void llama_model::load_hparams(llama_model_loader & ml) {
+                     default: type = LLM_TYPE_UNKNOWN;
+                 }
+             } break;
+-        default: throw std::runtime_error("unsupported model architecture");
++        default:
++            LLAMA_LOG_WARN("%s: unsupported model architecture for hparams - skipping\n", __func__);
++            break;
+     }
+ 
+     pimpl->n_bytes = ml.n_bytes;
