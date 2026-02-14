@@ -311,41 +311,29 @@ class GGUFQuantizer:
             else:
                 print(f"✅ Archivo ya existe: {raw_model}")
             
-            # 2. Extracción (RAM-Optimized)
-            from tools.extract_components import extract_components
-            extracted = extract_components(raw_model, comp_dir)
+            # 2. Conversión Directa (Bypass de extracción para ahorrar RAM/Disco)
+            # El script convert.py (basado en llama.cpp) ya soporta leer del .safetensors original
+            # usando LazyStateDict y filtrado de prefijos.
             
-            # LIBERAR DISCO: Borrar modelo original tras extracción
-            if os.path.exists(raw_model):
-                print(f"🧹 Liberando espacio: Eliminando modelo original {os.path.basename(raw_model)}")
-                os.remove(raw_model)
-            
-            # 3. Subir Componentes No-Unet (Si procede)
-            if upload_to_hf:
-                print(f"📦 Creando/Verificando repo: {repo_id}")
-                create_repo(repo_id, token=Config.HF_TOKEN, exist_ok=True)
-                
-                for name, path in extracted.items():
-                    if name != "unet":
-                        print(f"⬆️ Subiendo {name}...")
-                        self.api.upload_file(path_or_fileobj=path, path_in_repo=f"{name}.safetensors", repo_id=repo_id, token=Config.HF_TOKEN)
-
-            # 4. FP16 GGUF Base
-            unet_path = extracted.get("unet")
             # Detección inteligente de RAM para modo Low-RAM (Colab Free Tier)
             import psutil
             total_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
             low_ram_flag = ""
             
             # Umbral: Si hay menos de 14GB de RAM y el usuario no fuerza lo contrario
-            # Colab Free tiene ~12.7 GB.
             if total_ram_gb < 14:
                 print(f"⚠️ Low RAM detected ({total_ram_gb:.1f} GB). Enabling chunked processing to prevent OOM.")
                 low_ram_flag = "--low-ram"
                 
-            print(f"📦 Converting to FP16 GGUF (Low RAM: {'ON' if low_ram_flag else 'OFF'})...")
-            convert_cmd = f"{sys.executable} {Config.CONVERT_SCRIPT} --src \"{unet_path}\" --dst \"{fp16_path}\" {low_ram_flag}"
+            print(f"📦 Converting to FP16 GGUF directly from {os.path.basename(raw_model)}...")
+            # Nota: convert.py espera --src apuntando al modelo. 
+            convert_cmd = f"{sys.executable} {Config.CONVERT_SCRIPT} --src \"{raw_model}\" --dst \"{fp16_path}\" {low_ram_flag}"
             subprocess.run(convert_cmd, shell=True, check=True)
+            
+            # LIBERAR DISCO: Borrar modelo original tras conversión exitosa
+            if os.path.exists(raw_model):
+                print(f"🧹 Liberando espacio: Eliminando modelo original {os.path.basename(raw_model)}")
+                os.remove(raw_model)
             
             # 5. Cuantización
             for q in quants_to_process:
