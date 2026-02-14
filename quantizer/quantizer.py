@@ -219,12 +219,57 @@ class GGUFQuantizer:
             print(f"❌ Error Crítico: No se encontró el script de conversión en {Config.CONVERT_SCRIPT}")
 
     def download_file(self, url, dest):
-        print(f"📥 Descargando a: {dest}...")
-        with requests.get(url, stream=True) as r:
-            r.raise_for_status()
-            with open(dest, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
+        # 1. Try aria2c (Fast & Robust)
+        if shutil.which("aria2c"):
+            print(f"🚀 Usando aria2c para descarga acelerada: {dest}")
+            try:
+                cmd = ["aria2c", "-x", "16", "-s", "16", "-k", "1M", "-c", 
+                       "-d", os.path.dirname(dest), 
+                       "-o", os.path.basename(dest), 
+                       url]
+                subprocess.run(cmd, check=True)
+                return
+            except subprocess.CalledProcessError:
+                print("⚠️ aria2c falló, cambiando a requests con resume...")
+
+        # 2. Fallback: Requests con Resume y Retries
+        print(f"📥 Descargando a: {dest} (Requests fallback)...")
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                # Check current size for resume
+                resume_header = {}
+                mode = 'wb'
+                if os.path.exists(dest):
+                    current_size = os.path.getsize(dest)
+                    # Solo resumir si el archivo no está vacío
+                    if current_size > 0:
+                        resume_header = {'Range': f'bytes={current_size}-'}
+                        mode = 'ab'
+                        print(f"🔄 Reanudando descarga desde {current_size / (1024**2):.2f} MB...")
+
+                with requests.get(url, stream=True, headers=resume_header, timeout=60) as r:
+                    # Handle range not satisfiable (file finished or server doesn't support)
+                    if r.status_code == 416: 
+                        print("✅ Archivo ya completo (416).")
+                        return
+                    
+                    # 206 Partial Content es lo esperado para resume
+                    if r.status_code not in [200, 206]:
+                        r.raise_for_status()
+                    
+                    with open(dest, mode) as f:
+                        for chunk in r.iter_content(chunk_size=1024*1024): # 1MB chunks
+                            if chunk: f.write(chunk)
+                
+                print("✅ Descarga completada.")
+                return
+                
+            except (requests.exceptions.RequestException, urllib3.exceptions.IncompleteRead) as e:
+                print(f"❌ Error descarga (intento {attempt+1}/{max_retries}): {e}")
+                time.sleep(2 ** attempt) # Backoff
+        
+        raise RuntimeError("Falló la descarga tras múltiples intentos.")
 
     def update_readme(self, url, custom_quants=None):
         print(f"📝 Actualizando solo documentación para: {url}")
@@ -261,7 +306,10 @@ class GGUFQuantizer:
 
         try:
             # 1. Descarga
-            self.download_file(meta['download_url'], raw_model)
+            if not os.path.exists(raw_model):
+                self.download_robust(meta['downloadUrl'], raw_model)
+            else:
+                print(f"✅ Archivo ya existe: {raw_model}")
             
             # 2. Extracción (RAM-Optimized)
             from tools.extract_components import extract_components

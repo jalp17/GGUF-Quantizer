@@ -16,6 +16,13 @@ for arg in "$@"; do
     fi
 done
 
+# Install system dependencies
+echo "📦 Installing system dependencies..."
+apt-get update && apt-get install -y aria2
+
+# Check dependencies
+echo "🔍 Checking dependencies..."
+
 echo -e "\033[0;36m=== GGUF-Quantizer Setup (Linux/macOS) ===\033[0m"
 
 if [ "$CLEAR_CACHE" = true ]; then
