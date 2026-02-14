@@ -236,6 +236,10 @@ class LazyStateDict:
     def values(self):
         for k in self.keys_list:
             yield self.get_tensor(k)
+
+    def values(self):
+        for k in self.keys_list:
+            yield self.get_tensor(k)
             
     def __getitem__(self, key): return self.get_tensor(key)
     def __contains__(self, key): return key in self.keys_list
