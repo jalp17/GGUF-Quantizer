@@ -392,23 +392,6 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
     # handle actual file
     writer = gguf.GGUFWriter(path=None, arch=model_arch.arch)
     
-    # [FIX] En modo Low-RAM, debemos abrir el archivo INMEDIATAMENTE antes de escribir nada en el buffer.
-    # gguf_writer recientes lanzan error si 'open_output_file' se llama cuando el estado ya no es EMPTY.
-    if args.low_ram:
-        logging.info(f"Low RAM Mode: Opening {dst_path} immediately for streaming write...")
-        writer.open_output_file(dst_path)
-        # Note: write_header_to_file NO se debe usar si ya abrimos manualment o 
-        # si queremos escribir header despues.
-        # Pero GGUFWriter standard espera: open -> add_kv -> write_header_to_file (que hace open+write_header)
-        
-        # El problema es que write_header_to_file llama a open_output_file internamente.
-        # Si ya agregamos KV, write_header_to_file fallará al intentar abrir.
-        
-        # SOLUCION: No llamar a write_header_to_file dos veces ni tarde.
-        # Vamos a dejar que writer acumule KV data (versiones, tipos) y luego,
-        # SOLO escribir el header cuando estemos listos, pero saltando el check de open si ya está abierto?
-        # No, write_header_to_file llama a self.open_output_file(path).
-    
     writer.add_quantization_version(gguf.GGML_QUANT_VERSION)
     if ftype_gguf is not None:
         writer.add_file_type(ftype_gguf)
@@ -420,36 +403,6 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
         writer.add_uint32(f"{model_arch.arch}.embedding_length", 768 if model_arch.arch == "sd1" else 2048)
         writer.add_uint32(f"{model_arch.arch}.block_count", 12 if model_arch.arch == "sd1" else 20)
         logging.info(f"Inyectando metadatos para {model_arch.arch}...")
-
-    if args.low_ram:
-        # LOW-RAM MODE: Write header and KV data NOW
-        # Como ya hemos añadido KV data (version, ftype, metadatos), el estado es KV_DATA.
-        # write_header_to_file intentará abrir el archivo y fallará.
-        # Debemos abrir el archivo manualmente AL PRINCIPIO o usar un método que no sea write_header_to_file.
-        
-        # Re-check gguf code: write_header_to_file(self, path): self.open_output_file(path); self.write_header()
-        # open_output_file(path): if state != EMPTY raise Error.
-        
-        # Conclusion: Si usamos write_header_to_file, debe ser LO PRIMERO.
-        # Pero add_quantization_version y add_file_type suelen añadirse antes.
-        
-        # FIX REAL: Instanciar GGUFWriter CON el path si es low_ram, o llamar a open_output_file AL PRINCIPIO.
-        pass # La lógica se movió arriba, pero espera...
-        
-        # Si inicializamos writer con path, se abre automáticamente?
-        # gguf.GGUFWriter(path=...) -> init -> nada especial.
-        
-        # Vamos a cambiar la estrategia:
-        # 1. Instanciar writer.
-        # 2. SI LOW RAM: writer.open_output_file(dst_path) INMEDIATAMENTE.
-        # 3. Añadir metadatos.
-        # 4. Llamar a writer.write_header() (sin _to_file) y writer.write_kv_data_to_file().
-        
-        # Pero write_header_to_file es conveniente.
-        # Si abrimos antes, ¿podemos llamar a write_header? Sí.
-        
-        writer.write_header() # Escribe magic y version
-        writer.write_kv_data_to_file() # Vuelca los KV acumulados hasta ahora
         
     else:
         # Modo normal (RAM alta): Todo se mantiene en memoria hasta save_gguf() o similar
@@ -470,55 +423,15 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
         # BUT wait: GGUFWriter in gguf.py is not designed for streaming. 
         # It stores self.tensors = [].
         
-        # Strategy B: Use the existing logic but FORCE garbage collection
-        # We can't easily stream with standard GGUFWriter without comprehensive rewrite.
-        
         # Alternative: We modify handle_tensors to NOT accumulate numpy arrays in GGUFWriter
         # but instead keeping them as lazy, and only materializing during write.
         # However, convert.py already quantizes BEFORE adding to writer.
-        
-        logging.info("Low RAM mode: Quantizing and writing tensors sequentially...")
-        
-        # Write header and KV first (standard)
-        writer.write_header_to_file(path=dst_path)
-        writer.write_kv_data_to_file()
-        
-        # We need to manually write tensor info and data
-        # This requires accessing private methods or rewriting the loop.
-        # Given we can't easily patch GGUFWriter, we will stick to the standard flow
-        # but ensure aggressive GC.
         
         # Actually, standard convert.py flow:
         # 1. handle_tensors() loops ALL tensors, quantizes them, adds to writer.tensors list
         # 2. writer.write_tensors_to_file() loops writer.tensors and writes them.
         
         # The MEMORY SPIKE is because `writer.tensors` holds ALL quantized tensors in RAM.
-        
-        # FIX: We need a CustomGGUFWriter or a patched flow.
-        # Let's inject a custom writer logic here.
-        
-        import gc
-        padding = gguf.GGUFWriter.gguf_pad(writer.data_offset, writer.alignment)
-        writer.fout.write(padding)
-        writer.data_offset += len(padding)
-        
-        # We need to calculate offsets ahead of time? No, GGUF stores offset relative to data start.
-        # But wait, Tensor Info block is written BEFORE Tensor Data block.
-        # So we need to know all offsets/sizes BEFORE writing any data.
-        
-        # This confirms we CANNOT stream data easily if we follow spec strictly (Infos block first).
-        # HOWEVER, the data offset is relative.
-        
-        # Let's stick to the Plan B from task: 
-        # "Modificar convert.py para escribir el GGUF FP16 de forma incremental"
-        # If we can't stream GGUF easily, we should at least avoid holding all F16 tensors in RAM.
-        
-        # Current convert.py:
-        # handle_tensors -> loads tensor -> quantizes to F16/Q8 -> adds to writer.
-        
-        # We will modify handle_tensors to accept a 'flush' callback or similar?
-        # No, because writer.write_tensors_to_file expects all tensors to be present in .tensors list
-        # to write the info block first.
         
         # Solution: Two-pass approach with minimal RAM
         # Pass 1: Compute sizes and offsets (without storing data) -> Write Tensor Infos
