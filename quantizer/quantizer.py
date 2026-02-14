@@ -284,8 +284,20 @@ class GGUFQuantizer:
 
             # 4. FP16 GGUF Base
             unet_path = extracted.get("unet")
-            print("⚙️ Generando base FP16...")
-            subprocess.run([sys.executable, Config.CONVERT_SCRIPT, "--src", unet_path, "--dst", fp16_path], check=True)
+            # Detección inteligente de RAM para modo Low-RAM (Colab Free Tier)
+            import psutil
+            total_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+            low_ram_flag = ""
+            
+            # Umbral: Si hay menos de 14GB de RAM y el usuario no fuerza lo contrario
+            # Colab Free tiene ~12.7 GB.
+            if total_ram_gb < 14:
+                print(f"⚠️ Low RAM detected ({total_ram_gb:.1f} GB). Enabling chunked processing to prevent OOM.")
+                low_ram_flag = "--low-ram"
+                
+            print(f"📦 Converting to FP16 GGUF (Low RAM: {'ON' if low_ram_flag else 'OFF'})...")
+            convert_cmd = f"{sys.executable} {Config.CONVERT_SCRIPT} --src \"{unet_path}\" --dst \"{fp16_path}\" {low_ram_flag}"
+            subprocess.run(convert_cmd, shell=True, check=True)
             
             # 5. Cuantización
             for q in quants_to_process:
