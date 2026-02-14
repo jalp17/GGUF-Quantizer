@@ -454,214 +454,91 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
         
         logging.info("🚀 Low-RAM Mode enabled: Two-pass processing (Analyze -> Write)")
         
-        # Prepare file
-        writer.write_header_to_file(path=dst_path)
-        writer.write_kv_data_to_file()
-        
-        # We need to calculate alignment padding
-        alignment = writer.alignment
-        data_offset = writer.data_offset
-        
-        # Add padding before data starts (standard GGUF alignment)
-        # Note: GGUFWriter.write_kv_data_to_file() doesn't add the alignment padding for the data block end.
-        # The padding is calculated based on the GLOBAL offset.
-        
-        # We need access to writer.fout (which is created in write_header_to_file if path provided)
-        # But writer.write_header_to_file opens the file.
-        
-        # Pass 1: Simulate quantization to get sizes/types
-        tensor_infos = []
-        current_offset = 0
-        
-        import gc
-        
+        # Pass 1: Analyze tensor sizes and add to writer info
         logging.info("Pass 1: Analyzing tensor sizes...")
+        tensor_keys = []
         for key, data in tqdm(state_dict.items(), desc="Analyzing"):
-             # Filter ignored
             if any(x in key for x in model_arch.keys_ignore): continue
             
-            # Determine type and shape using Zero-Copy access if possible
+            # Use Zero-Copy metadata if available
             if isinstance(state_dict, LazyStateDict):
-                # Optimization: Read metadata without loading tensor data!
                 shape, old_dtype_str = state_dict.get_tensor_meta(key)
-                
-                # Map string dtype (safetensors) to torch dtype
-                # Safetensors dtypes: F16, F32, BF16, I8, etc.
-                if old_dtype_str == "BF16":
-                    old_dtype = torch.bfloat16
-                    data_dtype = torch.float32 
-                elif old_dtype_str == "F16":
-                    old_dtype = torch.float16
-                    data_dtype = torch.float16
-                elif old_dtype_str == "F32":
-                    old_dtype = torch.float32
-                    data_dtype = torch.float32
-                else:
-                    # Fallback for unknown types (e.g. FP8)
-                    # We might need to load to check, but let's assume valid
-                    old_dtype = torch.float32 # Placeholder
-                    data_dtype = torch.float32
+                if old_dtype_str == "BF16": old_dtype = torch.bfloat16
+                elif old_dtype_str == "F16": old_dtype = torch.float16
+                elif old_dtype_str == "F32": old_dtype = torch.float32
+                else: old_dtype = torch.float32 
             else:
-                # Standard path (data is already loaded or not lazy supported)
-                if data.dtype == torch.bfloat16:
-                    data_dtype = torch.float32 # temporary for shape check
-                else:
-                    data_dtype = data.dtype
                 old_dtype = data.dtype
                 shape = data.shape
-            
-            # Determine target type logic...
             
             n_params = 1
             for dim in shape: n_params *= dim
             
             # Determine target type
-            data_qtype = gguf.GGMLQuantizationType.F16 # Default
+            data_qtype = gguf.GGMLQuantizationType.F16 
             if old_dtype == torch.bfloat16: data_qtype = gguf.GGMLQuantizationType.BF16
             
-            # Replicate the heuristics
             if old_dtype in (torch.float32, torch.bfloat16):
-                if len(shape) == 1: data_qtype = gguf.GGMLQuantizationType.F32
-                elif n_params <= QUANTIZATION_THRESHOLD: data_qtype = gguf.GGMLQuantizationType.F32
-                elif any(x in key for x in model_arch.keys_hiprec): data_qtype = gguf.GGMLQuantizationType.F32
+                if len(shape) == 1 or n_params <= QUANTIZATION_THRESHOLD or any(x in key for x in model_arch.keys_hiprec):
+                    data_qtype = gguf.GGMLQuantizationType.F32
             
-            # Calculate size
-            # gguf-py doesn't expose type_size easily for calculation without data?
-            # We can use gguf.ggml_type_size(data_qtype) approx?
-            # Actually easiest is to trust the logic.
-            
-            # We need to reshape?
-            # conversion logic (lines 303-312)
+            # Handle shape fix (Reshape logic)
             if (model_arch.shape_fix and len(shape) > 1 and n_params >= REARRANGE_THRESHOLD 
                 and (n_params / 256).is_integer() and not (shape[-1] / 256).is_integer()):
-                # Reshape happened
-                orig_shape = shape
+                # Preserve original shape in KV metadata
+                writer.add_array(f"{key}.orig_shape", list(shape))
                 shape = (n_params // 256, 256)
-                # We need to add query kv for orig_shape?
-                # writer.add_array... we can do this now as it is KV data?
-                # NO, KV data is already written. This is a problem for "Pass 1".
-                # If we add KV pairs now, they won't be in the file.
-                
-                # Correction: We must add ALL KV pairs before write_kv_data_to_file.
-                # So we actually need to Pre-Pass just to find reshapes?
-                # Or just accept that we might miss the orig_shape KV in low-ram mode?
-                # Actually, the orig_shape is useful but maybe not critical? 
-                # Let's try to add it. But writer is already written.
-                pass 
             
             # Calculate bytes
-            # Block size and type size
             blk_size = 1
-            type_size = 2 # F16
+            type_size = 2 # F16/BF16
             if data_qtype == gguf.GGMLQuantizationType.F32: type_size = 4
-            elif data_qtype == gguf.GGMLQuantizationType.BF16: type_size = 2
-            elif data_qtype == gguf.GGMLQuantizationType.Q8_0: 
-                blk_size = 32
-                type_size = 34 # 32 bytes + 2 bytes delta
             
-            # Size = (n_params / blk_size) * type_size
             size_bytes = (n_params // blk_size) * type_size
             
-            # Alignment
-            padding = 0
-            if current_offset % alignment != 0:
-                padding = alignment - (current_offset % alignment)
+            # Register in writer (Info only, no data yet)
+            # We map torch dtype to a dummy numpy dtype for the API
+            np_dtype = np.float16
+            if data_qtype == gguf.GGMLQuantizationType.F32: np_dtype = np.float32
             
-            offset = current_offset + padding
-            current_offset = offset + size_bytes
+            writer.add_tensor_info(key, shape, np_dtype, size_bytes, raw_dtype=data_qtype)
+            tensor_keys.append((key, old_dtype, data_qtype))
             
-            # Store info
-            tensor_infos.append({
-                "name": key,
-                "shape": shape,
-                "type": data_qtype,
-                "offset": offset,
-                "data_dtype": old_dtype # For Pass 2
-            })
-            
-            # Force GC
-            del data
-            
-        # Write Tensor Infos
-        logging.info(f"Pass 1 Done. Calculated {len(tensor_infos)} tensors. Writing Info Block...")
+            del data # If it was loaded
+
+        # Write Headers + KV + Tensor Info block
+        logging.info(f"Pass 1 Done. Writing GGUF Headers and Metadata to {dst_path}...")
+        writer.write_header_to_file(path=dst_path)
+        writer.write_kv_data_to_file()
+        writer.write_ti_data_to_file()
         
-        # We can't use writer.add_tensor because it expects data.
-        # We must manually write the TI block.
-        # This is accessing private/internal API of GGUFWriter, risky but necessary.
+        # Prepare for raw data writing
+        fout = writer.fout[0]
+        alignment = writer.data_alignment
         
-        # GGUF spec:
-        # [uint64] n_tensors
-        # for i in n_tensors:
-        #   [string] name
-        #   [uint32] n_dims
-        #   [uint64] dim[n_dims]
-        #   [uint32] type
-        #   [uint64] offset
-        
-        import struct
-        fout = writer.fout
-        
-        # Write n_tensors
-        fout.write(struct.pack("<Q", len(tensor_infos)))
-        
-        for info in tensor_infos:
-            # Name
-            bname = info["name"].encode("utf8")
-            fout.write(struct.pack("<Q", len(bname)))
-            fout.write(bname)
-            
-            # Dims
-            shape = info["shape"]
-            fout.write(struct.pack("<I", len(shape)))
-            for dim in reversed(shape): # GGUF uses reverse order (Dim 0 is last?) 
-                # Wait, GGUFWriter.add_tensor does: data.shape (numpy) -> reversed
-                fout.write(struct.pack("<Q", int(dim)))
-                
-            # Type
-            fout.write(struct.pack("<I", int(info["type"])))
-            
-            # Offset
-            fout.write(struct.pack("<Q", int(info["offset"])))
-            
-        # Write alignment padding for first tensor
-        # Global alignment padding logic from GGUFWriter
-        # The padding is actually written BEFORE the data of each tensor, relative to the file position?
-        # No, offset is relative to base of data block.
-        # But we need to pad the FILE to align the data block start?
-        
-        # Standard GGUFWriter:
-        # write_tensors_to_file:
-        #   write_padding(self.fout, self.data_offset)
-        
-        bar_offset = writer.data_offset # This tracks file pointer? No, data_offset is for alignment calc?
-        
-        # Let's align the start of data block
+        # Align data block start
         curr_pos = fout.tell()
         rem = curr_pos % alignment
         if rem != 0:
-            pad = alignment - rem
-            fout.write(bytes([0]*pad))
-            
-        # Pass 2: Write Data
-        logging.info("Pass 2: Quantizing and Writing Data...")
+            fout.write(bytes([0] * (alignment - rem)))
         
         base_data_pos = fout.tell()
         
-        for info in tqdm(tensor_infos, desc="Writing"):
-            key = info["name"]
-            # Reload data
-            data = state_dict[key] # Lazy load
+        # Pass 2: Quantize and Write Data
+        logging.info("Pass 2: Quantizing and Writing Data sequentially...")
+        import gc
+        for key, old_dtype, target_qtype in tqdm(tensor_keys, desc="Writing"):
+            data = state_dict[key] # Lazy reload
             
-            # Quantize (Replicate logic)
-            if info["data_dtype"] == torch.bfloat16:
+            # Pre-conversion
+            if old_dtype == torch.bfloat16:
                 data = data.to(torch.float32).numpy()
-            elif info["data_dtype"] in [getattr(torch, "float8_e4m3fn", "_invalid"), getattr(torch, "float8_e5m2", "_invalid")]:
+            elif old_dtype in [getattr(torch, "float8_e4m3fn", "_invalid"), getattr(torch, "float8_e5m2", "_invalid")]:
                 data = data.to(torch.float16).numpy()
             else:
                 data = data.numpy()
                 
-            # Reshape if needed (shape_fix)
-            # We already calculated shape in Pass 1, just trust it fits
+            # Reshape if needed
             if (model_arch.shape_fix and len(data.shape) > 1 
                 and data.size >= REARRANGE_THRESHOLD 
                 and (data.size / 256).is_integer() 
@@ -669,34 +546,25 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
                  data = data.reshape(data.size // 256, 256)
 
             # Quantize
-            qtype = info["type"]
-            try:
-                data = gguf.quants.quantize(data, qtype)
-            except Exception as e:
-                tqdm.write(f"Fallback F16 for {key}: {e}")
-                qtype = gguf.GGMLQuantizationType.F16
-                data = gguf.quants.quantize(data, qtype)
+            data = gguf.quants.quantize(data, target_qtype)
             
-            # Write data
-            # Calculate padding relative to base_data_pos
-            # info["offset"] is relative to base_data_pos
+            # Standard GGUF alignment: each tensor data must be aligned
+            # GGUFWriter info block stores OFFSET relative to data block start.
+            # We must ensure our write position matches the calculated offset.
+            # But wait, we didn't store the calculated offset because GGUFWriter calculated it during write_ti!
             
-            # Check alignment
-            current_rel_pos = fout.tell() - base_data_pos
-            expected_offset = info["offset"]
+            # Actually, GGUFWriter's write_ti_data_to_file calculates offsets linearly with padding.
+            # We must replicate the same padding here.
+            curr_rel_pos = fout.tell() - base_data_pos
+            if curr_rel_pos % alignment != 0:
+                fout.write(bytes([0] * (alignment - (curr_rel_pos % alignment))))
             
-            if current_rel_pos < expected_offset:
-                pad_len = expected_offset - current_rel_pos
-                fout.write(bytes([0]*pad_len))
-            elif current_rel_pos > expected_offset:
-                raise RuntimeError(f"Offset mismatch for {key}! Expected {expected_offset}, got {current_rel_pos}")
-                
-            # Write bytes
+            # Write to file
             data.tofile(fout)
             
-            # Cleanup
             del data
-            gc.collect()
+            if tensor_keys.index((key, old_dtype, target_qtype)) % 10 == 0:
+                gc.collect()
 
     writer.close()
 
