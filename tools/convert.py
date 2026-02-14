@@ -391,6 +391,24 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
 
     # handle actual file
     writer = gguf.GGUFWriter(path=None, arch=model_arch.arch)
+    
+    # [FIX] En modo Low-RAM, debemos abrir el archivo INMEDIATAMENTE antes de escribir nada en el buffer.
+    # gguf_writer recientes lanzan error si 'open_output_file' se llama cuando el estado ya no es EMPTY.
+    if args.low_ram:
+        logging.info(f"Low RAM Mode: Opening {dst_path} immediately for streaming write...")
+        writer.open_output_file(dst_path)
+        # Note: write_header_to_file NO se debe usar si ya abrimos manualment o 
+        # si queremos escribir header despues.
+        # Pero GGUFWriter standard espera: open -> add_kv -> write_header_to_file (que hace open+write_header)
+        
+        # El problema es que write_header_to_file llama a open_output_file internamente.
+        # Si ya agregamos KV, write_header_to_file fallará al intentar abrir.
+        
+        # SOLUCION: No llamar a write_header_to_file dos veces ni tarde.
+        # Vamos a dejar que writer acumule KV data (versiones, tipos) y luego,
+        # SOLO escribir el header cuando estemos listos, pero saltando el check de open si ya está abierto?
+        # No, write_header_to_file llama a self.open_output_file(path).
+    
     writer.add_quantization_version(gguf.GGML_QUANT_VERSION)
     if ftype_gguf is not None:
         writer.add_file_type(ftype_gguf)
@@ -404,9 +422,38 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
         logging.info(f"Inyectando metadatos para {model_arch.arch}...")
 
     if args.low_ram:
-        # LOW-RAM MODE: Write tensors immediately to disk
-        writer.write_header_to_file(path=dst_path)
-        writer.write_kv_data_to_file()
+        # LOW-RAM MODE: Write header and KV data NOW
+        # Como ya hemos añadido KV data (version, ftype, metadatos), el estado es KV_DATA.
+        # write_header_to_file intentará abrir el archivo y fallará.
+        # Debemos abrir el archivo manualmente AL PRINCIPIO o usar un método que no sea write_header_to_file.
+        
+        # Re-check gguf code: write_header_to_file(self, path): self.open_output_file(path); self.write_header()
+        # open_output_file(path): if state != EMPTY raise Error.
+        
+        # Conclusion: Si usamos write_header_to_file, debe ser LO PRIMERO.
+        # Pero add_quantization_version y add_file_type suelen añadirse antes.
+        
+        # FIX REAL: Instanciar GGUFWriter CON el path si es low_ram, o llamar a open_output_file AL PRINCIPIO.
+        pass # La lógica se movió arriba, pero espera...
+        
+        # Si inicializamos writer con path, se abre automáticamente?
+        # gguf.GGUFWriter(path=...) -> init -> nada especial.
+        
+        # Vamos a cambiar la estrategia:
+        # 1. Instanciar writer.
+        # 2. SI LOW RAM: writer.open_output_file(dst_path) INMEDIATAMENTE.
+        # 3. Añadir metadatos.
+        # 4. Llamar a writer.write_header() (sin _to_file) y writer.write_kv_data_to_file().
+        
+        # Pero write_header_to_file es conveniente.
+        # Si abrimos antes, ¿podemos llamar a write_header? Sí.
+        
+        writer.write_header() # Escribe magic y version
+        writer.write_kv_data_to_file() # Vuelca los KV acumulados hasta ahora
+        
+    else:
+        # Modo normal (RAM alta): Todo se mantiene en memoria hasta save_gguf() o similar
+        pass
         
         # Custom implementation of write_tensors_to_file for low RAM
         # We perform quantization and write TENSOR INFO + TENSOR DATA individually
