@@ -218,7 +218,7 @@ class GGUFQuantizer:
         if not os.path.exists(Config.CONVERT_SCRIPT):
             print(f"❌ Error Crítico: No se encontró el script de conversión en {Config.CONVERT_SCRIPT}")
 
-    def download_robust(self, url, dest):
+    def download_robustd(self, url, dest):
         # 1. Try aria2c (Fast & Robust)
         if shutil.which("aria2c"):
             print(f"🚀 Usando aria2c para descarga acelerada: {dest}")
@@ -307,7 +307,7 @@ class GGUFQuantizer:
         try:
             # 1. Descarga
             if not os.path.exists(raw_model):
-                self.download_robust(meta['downloadUrl'], raw_model)
+                self.download_robust(meta['download_url'], raw_model)
             else:
                 print(f"✅ Archivo ya existe: {raw_model}")
             
