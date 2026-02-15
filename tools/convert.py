@@ -27,10 +27,18 @@ class ModelTemplate:
 class ModelFlux(ModelTemplate):
     arch = "flux"
     keys_detect = [
-        ("transformer_blocks.0.attn.norm_added_k.weight",),
-        ("double_blocks.0.img_attn.proj.weight",),
+        ("transformer_blocks.0.attn.norm_added_k.weight",), # Diffusers
+        ("double_blocks.0.img_attn.proj.weight",),          # Comfy/Reference
     ]
-    keys_banned = ["transformer_blocks.0.attn.norm_added_k.weight",]
+    # Ignorar siempre componentes no pertenecientes al transformer del modelo base
+    keys_ignore = [
+        "vae.", "first_stage_model.", 
+        "conditioner.", "text_encoders.", 
+        "clip_l.", "t5xxl.", # Prefijos comunes de T5/CLIP
+        "guidance_in.", "img_in.", "time_in.", "vector_in." # Depende del merge, pero a menudo se ignoran si no son core
+    ]
+    # No banear lo que detectamos, eso era un error de lógica de la versión previa
+    keys_banned = []
 
 class ModelSD3(ModelTemplate):
     arch = "sd3"
@@ -175,6 +183,7 @@ def parse_args():
     parser.add_argument("--src", type=str, required=True, help="Path to input .safetensors file")
     parser.add_argument("--dst", type=str, help="Path to output .gguf file")
     parser.add_argument("--low-ram", action="store_true", help="Enable low-RAM mode (slow, but works on 12GB envs)")
+    parser.add_argument("--extract-t5", action="store_true", help="Extract T5 encoder to a separate safetensors file (for Flux/SD3)")
     args = parser.parse_args()
 
     if not os.path.isfile(args.src):
@@ -255,6 +264,10 @@ class LazyStateDict:
         orig_key = self.prefix + key
         slice_obj = self.f.get_slice(orig_key)
         return slice_obj.get_shape(), slice_obj.get_dtype()
+
+    def metadata(self):
+        """Retorna el diccionario de metadatos del archivo safetensors."""
+        return self.f.metadata()
 
 def load_state_dict(path):
     if any(path.endswith(x) for x in [".ckpt", ".pt", ".bin", ".pth"]):
@@ -396,6 +409,17 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
     if ftype_gguf is not None:
         writer.add_file_type(ftype_gguf)
 
+    # [NEW] Copiar metadatos originales del Safetensors a GGUF
+    if hasattr(state_dict, 'metadata'):
+        meta = state_dict.metadata()
+        if meta:
+            logging.info(f"Copiando {len(meta)} metadatos desde safetensors...")
+            for k, v in meta.items():
+                # Evitar duplicar arquitectura o info técnica básica de GGUF
+                if k.startswith("modelspec.") or k in ["format"]: continue
+                # Inyectar con prefijo safetensors para trazabilidad
+                writer.add_string(f"safetensors.{k}", str(v))
+
     # Inyectar metadatos obligatorios para arquitecturas de imagen (evita SIGABRT en llama.cpp)
     if model_arch.arch in ["sdxl", "sd1", "sd3", "flux"]:
         # Valores estándar para que el cargador de llama.cpp no explote
@@ -440,6 +464,24 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
         # This requires hacking GGUFWriter. 
         # Let's look at how handle_tensors is called.
         pass
+
+    # [NEW] Flux T5 Extraction
+    if args.extract_t5:
+        t5_keys = [k for k in state_dict.keys() if "t5xxl" in k.lower() or "t5." in k.lower()]
+        if t5_keys:
+            t5_path = dst_path.replace(".gguf", ".t5xxl.safetensors")
+            logging.info(f"✨ Extracting {len(t5_keys)} T5 tensors to {t5_path}...")
+            t5_sd = {}
+            # Si es Lazy, cargamos solo lo necesario
+            for k in tqdm(t5_keys, desc="Extracting T5"):
+                t5_sd[k] = state_dict[k]
+            
+            # Guardar usando safetensors (si ya está cargado, state_dict[k] es tensor)
+            # Nota: save_file de safetensors maneja dicts de tensores
+            save_file(t5_sd, t5_path)
+            logging.info("✅ T5 extraction complete.")
+        else:
+            logging.warning("⚠️ --extract-t5 requested but no T5 keys found in source.")
 
     if not args.low_ram:
         handle_tensors(writer, state_dict, model_arch)
@@ -527,7 +569,7 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
         # Pass 2: Quantize and Write Data
         logging.info("Pass 2: Quantizing and Writing Data sequentially...")
         import gc
-        for key, old_dtype, target_qtype in tqdm(tensor_keys, desc="Writing"):
+        for i, (key, old_dtype, target_qtype) in enumerate(tqdm(tensor_keys, desc="Writing")):
             data = state_dict[key] # Lazy reload
             
             # Pre-conversion
@@ -563,7 +605,7 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
             data.tofile(fout)
             
             del data
-            if tensor_keys.index((key, old_dtype, target_qtype)) % 10 == 0:
+            if i % 10 == 0:
                 gc.collect()
 
     writer.close()

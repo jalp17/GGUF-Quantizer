@@ -324,10 +324,16 @@ class GGUFQuantizer:
             if total_ram_gb < 14:
                 print(f"⚠️ Low RAM detected ({total_ram_gb:.1f} GB). Enabling chunked processing to prevent OOM.")
                 low_ram_flag = "--low-ram"
+            
+            # Detección de Flux para extracción de T5
+            flux_flag = ""
+            if "flux" in meta.get('name', '').lower() or "flux" in meta.get('baseModel', '').lower():
+                print("✨ Flux detected! Enabling T5 extraction...")
+                flux_flag = "--extract-t5"
                 
             print(f"📦 Converting to FP16 GGUF directly from {os.path.basename(raw_model)}...")
             # Nota: convert.py espera --src apuntando al modelo. 
-            convert_cmd = f"{sys.executable} {Config.CONVERT_SCRIPT} --src \"{raw_model}\" --dst \"{fp16_path}\" {low_ram_flag}"
+            convert_cmd = f"{sys.executable} {Config.CONVERT_SCRIPT} --src \"{raw_model}\" --dst \"{fp16_path}\" {low_ram_flag} {flux_flag}"
             subprocess.run(convert_cmd, shell=True, check=True)
             
             # LIBERAR DISCO: Borrar modelo original tras conversión exitosa
