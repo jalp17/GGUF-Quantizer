@@ -1,9 +1,11 @@
 # (c) City96 || Apache-2.0 (apache.org/licenses/LICENSE-2.0)
 import os
+import sys
 import gguf
 import torch
 import logging
 import argparse
+import numpy as np
 from tqdm import tqdm
 from safetensors import safe_open
 from safetensors.torch import load_file, save_file
@@ -230,8 +232,8 @@ class LazyStateDict:
         self.f = safe_open(path, framework="pt", device="cpu")
         self.prefix = prefix
         
-        # Filtrar claves si hay prefijo
-        all_keys = self.f.keys()
+        # Filtrar claves si hay prefijo (forzar lista para evitar iteradores)
+        all_keys = list(self.f.keys())
         if prefix:
             self.keys_list = [k[len(prefix):] for k in all_keys if k.startswith(prefix)]
         else:
@@ -377,19 +379,31 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
     logging.info(f"* Architecture detected from input: {model_arch.arch}")
 
     # detect & set dtype for output file
-    dtypes = [x.dtype for x in state_dict.values()]
-    dtypes = {x:dtypes.count(x) for x in set(dtypes)}
-    main_dtype = max(dtypes, key=dtypes.get)
+    if isinstance(state_dict, LazyStateDict):
+        # Optimización: No cargar tensores, solo mirar metadatos
+        dtypes = []
+        for k in state_dict.keys():
+            _, dt = state_dict.get_tensor_meta(k)
+            # dt es un string de safetensors, convertir a torch dtype si es necesario para compatibilidad
+            # pero aquí solo necesitamos saber si es BF16 o F16.
+            # safe_open dtypes: 'F32', 'F16', 'BF16'
+            if dt == 'BF16': dtypes.append(torch.bfloat16)
+            elif dt == 'F16': dtypes.append(torch.float16)
+            else: dtypes.append(torch.float32)
+    else:
+        dtypes = [x.dtype for x in state_dict.values()]
+        
+    dtypes_count = {x:dtypes.count(x) for x in set(dtypes)}
+    main_dtype = max(dtypes_count, key=dtypes_count.get)
 
     if main_dtype == torch.bfloat16:
         ftype_name = "BF16"
-        ftype_gguf = gguf.LlamaFileType.MOSTLY_BF16
-    # elif main_dtype == torch.float32:
-    #     ftype_name = "F32"
-    #     ftype_gguf = None
+        ftype_gguf = getattr(gguf, "LlamaFileType", getattr(gguf, "FileType", None))
+        if ftype_gguf: ftype_gguf = getattr(ftype_gguf, "MOSTLY_BF16", 12) # 12 = BF16 in GGUF
     else:
         ftype_name = "F16"
-        ftype_gguf = gguf.LlamaFileType.MOSTLY_F16
+        ftype_gguf = getattr(gguf, "LlamaFileType", getattr(gguf, "FileType", None))
+        if ftype_gguf: ftype_gguf = getattr(ftype_gguf, "MOSTLY_F16", 1)  # 1 = F16 in GGUF
 
     if dst_path is None:
         dst_path = f"{os.path.splitext(path)[0]}-{ftype_name}.gguf"
@@ -405,7 +419,10 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
     # handle actual file
     writer = gguf.GGUFWriter(path=None, arch=model_arch.arch)
     
-    writer.add_quantization_version(gguf.GGML_QUANT_VERSION)
+    # Versión de cuantización (segura)
+    q_version = getattr(gguf, "GGML_QUANT_VERSION", 2)
+    writer.add_quantization_version(q_version)
+    
     if ftype_gguf is not None:
         writer.add_file_type(ftype_gguf)
 
@@ -532,19 +549,25 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
         # Pass 1: Analyze tensor sizes and add to writer info
         logging.info("Pass 1: Analyzing tensor sizes...")
         tensor_keys = []
-        for key, data in tqdm(state_dict.items(), desc="Analyzing"):
+        for key in tqdm(state_dict.keys(), desc="Analyzing"):
             if any(x in key for x in model_arch.keys_ignore): continue
             
             # Use Zero-Copy metadata if available
             if isinstance(state_dict, LazyStateDict):
-                shape, old_dtype_str = state_dict.get_tensor_meta(key)
+                res = state_dict.get_tensor_meta(key)
+                if res is None:
+                    logging.warning(f"No meta for {key}")
+                    continue
+                shape, old_dtype_str = res
                 if old_dtype_str == "BF16": old_dtype = torch.bfloat16
                 elif old_dtype_str == "F16": old_dtype = torch.float16
                 elif old_dtype_str == "F32": old_dtype = torch.float32
                 else: old_dtype = torch.float32 
             else:
-                old_dtype = data.dtype
-                shape = data.shape
+                raw_tensor = state_dict[key]
+                old_dtype = raw_tensor.dtype
+                shape = raw_tensor.shape
+                del raw_tensor
             
             n_params = 1
             for dim in shape: n_params *= dim
@@ -578,8 +601,6 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
             
             writer.add_tensor_info(key, shape, np_dtype, size_bytes, raw_dtype=data_qtype)
             tensor_keys.append((key, old_dtype, data_qtype))
-            
-            del data # If it was loaded
 
         # Write Headers + KV + Tensor Info block
         logging.info(f"Pass 1 Done. Writing GGUF Headers and Metadata to {dst_path}...")
