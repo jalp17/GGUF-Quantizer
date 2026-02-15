@@ -409,24 +409,57 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
     if ftype_gguf is not None:
         writer.add_file_type(ftype_gguf)
 
-    # [NEW] Copiar metadatos originales del Safetensors a GGUF
+    # [NEW] Copiar metadatos del Safetensors a GGUF (Modo Compatible)
     if hasattr(state_dict, 'metadata'):
         meta = state_dict.metadata()
         if meta:
-            logging.info(f"Copiando {len(meta)} metadatos desde safetensors...")
+            logging.info(f"Procesando {len(meta)} metadatos de safetensors...")
             for k, v in meta.items():
-                # Evitar duplicar arquitectura o info técnica básica de GGUF
-                if k.startswith("modelspec.") or k in ["format"]: continue
-                # Inyectar con prefijo safetensors para trazabilidad
-                writer.add_string(f"safetensors.{k}", str(v))
+                # Filtrar metadatos técnicos internos de safetensors o redundantes
+                if k.startswith("modelspec.") or k in ["format", "ss_tag_frequency", "ss_tags_card"]: continue
+                
+                # Mapeo de llaves comunes a estándar GGUF para mejor compatibilidad
+                # stable-diffusion.cpp y otros buscan llaves específicas en la raíz
+                key = k
+                if k == "ss_output_name": key = "general.name"
+                elif k == "ss_sd_model_name": key = "general.base_model.name"
+                
+                # Inyectar valor (limitado a strings por simplicidad en metadatos ST)
+                try:
+                    writer.add_string(key, str(v))
+                except Exception as e:
+                    logging.warning(f"No se pudo añadir metadato {key}: {e}")
 
-    # Inyectar metadatos obligatorios para arquitecturas de imagen (evita SIGABRT en llama.cpp)
+    # Inyectar metadatos técnicos REQUERIDOS por stable-diffusion.cpp y llama.cpp
+    # El cargador necesita saber context_length, embedding_length y block_count para reservar memoria
     if model_arch.arch in ["sdxl", "sd1", "sd3", "flux"]:
-        # Valores estándar para que el cargador de llama.cpp no explote
-        writer.add_uint32(f"{model_arch.arch}.context_length", 77)
-        writer.add_uint32(f"{model_arch.arch}.embedding_length", 768 if model_arch.arch == "sd1" else 2048)
-        writer.add_uint32(f"{model_arch.arch}.block_count", 12 if model_arch.arch == "sd1" else 20)
-        logging.info(f"Inyectando metadatos para {model_arch.arch}...")
+        logging.info(f"Configurando metadatos de arquitectura para: {model_arch.arch}")
+        
+        # Prefijo estándar: {arch}.{key}
+        arch_prefix = model_arch.arch
+        
+        # Parámetros por arquitectura (Ajustados según especificación de SD)
+        if model_arch.arch == "sd1":
+            writer.add_uint32(f"{arch_prefix}.context_length", 77)
+            writer.add_uint32(f"{arch_prefix}.embedding_length", 768)
+            writer.add_uint32(f"{arch_prefix}.block_count", 12)
+        elif model_arch.arch == "sdxl":
+            writer.add_uint32(f"{arch_prefix}.context_length", 77)
+            writer.add_uint32(f"{arch_prefix}.embedding_length", 2048) # SDXL usa CLIP-L + OpenCLIP-G
+            writer.add_uint32(f"{arch_prefix}.block_count", 20)
+        elif model_arch.arch == "flux":
+            # Flux requiere parámetros específicos para el flujo de atención
+            writer.add_uint32(f"{arch_prefix}.context_length", 256)
+            writer.add_uint32(f"{arch_prefix}.embedding_length", 4096) # T5 XXL
+            writer.add_uint32(f"{arch_prefix}.block_count", 19) # 19 double blocks
+        elif model_arch.arch == "sd3":
+            writer.add_uint32(f"{arch_prefix}.context_length", 256)
+            writer.add_uint32(f"{arch_prefix}.embedding_length", 1536)
+            writer.add_uint32(f"{arch_prefix}.block_count", 24)
+
+        # Metadato de arquitectura general (CRÍTICO para cargadores)
+        writer.add_string("general.architecture", model_arch.arch)
+        writer.add_string("general.name", os.path.basename(dst_path))
         
     else:
         # Modo normal (RAM alta): Todo se mantiene en memoria hasta save_gguf() o similar
