@@ -280,6 +280,13 @@ class GGUFQuantizer:
         repo_id = f"{Config.HF_USER}/{safe_name}-GGUF"
         quants = custom_quants if custom_quants else Config.QUANTS
         
+        # [NEW] Asegurar existencia del repositorio
+        try:
+            print(f"📦 Asegurando repositorio: {repo_id}")
+            self.api.create_repo(repo_id=repo_id, token=Config.HF_TOKEN, exist_ok=True)
+        except Exception as e:
+            print(f"⚠️ Error al crear repo (puede que ya exista o falten permisos): {e}")
+
         readme = Documentation.generate_readme(meta, quants)
         self.api.upload_file(
             path_or_fileobj=readme.encode("utf-8"), 
@@ -296,6 +303,15 @@ class GGUFQuantizer:
         
         safe_name = make_safe_name(meta['name'])
         repo_id = f"{Config.HF_USER}/{safe_name}-GGUF"
+        
+        # [NEW] Asegurar existencia del repositorio
+        if upload_to_hf:
+            try:
+                print(f"📦 Preparando repositorio en Hugging Face: {repo_id}")
+                self.api.create_repo(repo_id=repo_id, token=Config.HF_TOKEN, exist_ok=True)
+            except Exception as e:
+                print(f"⚠️ Error preparando el repositorio: {e}")
+                print("   Si el error es de autenticación, verifica tu HF_TOKEN.")
         
         # Determinar quants a usar
         quants_to_process = custom_quants if custom_quants else Config.QUANTS
