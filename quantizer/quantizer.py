@@ -139,7 +139,7 @@ class Documentation:
         for q in quant_list:
             q_type = "Medium" if "Q4" in q else "Large" if "Q5" in q else "Ultra"
             stars = "Basica" if "Q4" in q else "Alta" if "Q5" in q else "Alta"
-            usage = "Balance / Velocidad" if "Q4" in q else "Uso Profesional"
+            usage = "Balance / Velocidad" if "Q4" in q else "Calidad"
             size = "~5-7GB" if "Q4" in q else "~8-10GB" if "Q5" in q else "Original"
             quants_table += f"| **{q}** | {q_type} | {size} | {stars} | {usage} |\n"
 
@@ -147,7 +147,7 @@ class Documentation:
         
         return yaml + f"""# {meta['name']} - GGUF Ultimate Edition 🏭
 
-Este repositorio ofrece la colección definitiva en formato **GGUF** del modelo original [{meta['name']}](https://civitai.com/models/{meta['id']}). Optimizados para un rendimiento máximo en **ComfyUI**.
+Este repositorio ofrece la colección en formato **GGUF** del modelo original [{meta['name']}](https://civitai.com/models/{meta['id']}). Optimizados para inferencia con poca memoria.
 
 ---
 
@@ -171,7 +171,7 @@ Para obtener los mejores resultados con esta versión GGUF, se recomiendan los s
 | Pasos | Rendimiento | Nivel de Detalle |
 | :--- | :--- | :--- |
 | **15 - 20** | Ultra Rápido | Bocetos rápidos o previsualizaciones. |
-| **25 - 35** | **Óptimo** | El "Sweet Spot" para GGUF con casi cero ruido. |
+| **25 - 35** | **Óptimo** | El equilibio para GGUF con casi cero ruido. |
 | **40+** | Estándar | Máximo refinamiento de texturas complejas. |
 
 ### 3. 🌫️ Comparativa de Denoise (Solo para i2i / Hires Fix)
@@ -198,7 +198,7 @@ Para obtener los mejores resultados con esta versión GGUF, se recomiendan los s
 {clean_desc}
 
 ---
-*GGUF Quantizer - Engineering Quality Visuals*
+*GGUF Quantizer - Comprimiendo la inteligencia artificial, píxel a píxel.*
 """
 
 # GGUF Quantizer Modular
