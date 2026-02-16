@@ -389,6 +389,9 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
             # safe_open dtypes: 'F32', 'F16', 'BF16'
             if dt == 'BF16': dtypes.append(torch.bfloat16)
             elif dt == 'F16': dtypes.append(torch.float16)
+            elif dt == 'F32': dtypes.append(torch.float32)
+            elif dt == 'F8_E4M3': dtypes.append(getattr(torch, "float8_e4m3fn", torch.float16))
+            elif dt == 'F8_E5M2': dtypes.append(getattr(torch, "float8_e5m2", torch.float16))
             else: dtypes.append(torch.float32)
     else:
         dtypes = [x.dtype for x in state_dict.values()]
@@ -474,8 +477,7 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
             writer.add_uint32(f"{arch_prefix}.embedding_length", 1536)
             writer.add_uint32(f"{arch_prefix}.block_count", 24)
 
-        # Metadato de arquitectura general (CRÍTICO para cargadores)
-        writer.add_string("general.architecture", model_arch.arch)
+        # Metadato de nombre general
         writer.add_string("general.name", os.path.basename(dst_path))
         
     else:
@@ -562,6 +564,10 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
                 if old_dtype_str == "BF16": old_dtype = torch.bfloat16
                 elif old_dtype_str == "F16": old_dtype = torch.float16
                 elif old_dtype_str == "F32": old_dtype = torch.float32
+                elif old_dtype_str == "F8_E4M3":
+                    old_dtype = getattr(torch, "float8_e4m3fn", torch.float16)
+                elif old_dtype_str == "F8_E5M2":
+                    old_dtype = getattr(torch, "float8_e5m2", torch.float16)
                 else: old_dtype = torch.float32 
             else:
                 raw_tensor = state_dict[key]
