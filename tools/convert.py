@@ -9,6 +9,8 @@ import numpy as np
 from tqdm import tqdm
 from safetensors import safe_open
 from safetensors.torch import load_file, save_file
+import psutil
+import gc
 
 QUANTIZATION_THRESHOLD = 1024
 REARRANGE_THRESHOLD = 512
@@ -606,7 +608,7 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
             if data_qtype == gguf.GGMLQuantizationType.F32: np_dtype = np.float32
             
             writer.add_tensor_info(key, shape, np_dtype, size_bytes, raw_dtype=data_qtype)
-            tensor_keys.append((key, old_dtype, data_qtype))
+            tensor_keys.append((key, old_dtype, data_qtype, n_params, size_bytes))
 
         # Write Headers + KV + Tensor Info block
         logging.info(f"Pass 1 Done. Writing GGUF Headers and Metadata to {dst_path}...")
@@ -626,47 +628,73 @@ def convert_file(path, dst_path=None, interact=True, overwrite=False):
         
         base_data_pos = fout.tell()
         
-        # Pass 2: Quantize and Write Data
-        logging.info("Pass 2: Quantizing and Writing Data sequentially...")
-        import gc
-        for i, (key, old_dtype, target_qtype) in enumerate(tqdm(tensor_keys, desc="Writing")):
-            data = state_dict[key] # Lazy reload
+        # Pass 2: Quantize and Write Data (Dynamic RAM Pro)
+        logging.info("Pass 2: Quantizing and Writing Data (Dynamic RAM Pro)...")
+        
+        reserve = 1024 * 1024 * 1024  # 1GB Safety Buffer
+        idx = 0
+        total_tensors = len(tensor_keys)
+        pbar = tqdm(total=total_tensors, desc="Writing")
+        
+        while idx < total_tensors:
+            # Calcular presupuesto actual
+            free_ram = psutil.virtual_memory().available
+            budget = max(0, free_ram - reserve)
             
-            # Pre-conversion
-            if old_dtype == torch.bfloat16:
-                data = data.to(torch.float32).numpy()
-            elif old_dtype in [getattr(torch, "float8_e4m3fn", "_invalid"), getattr(torch, "float8_e5m2", "_invalid")]:
-                data = data.to(torch.float16).numpy()
-            else:
-                data = data.numpy()
+            batch = []
+            batch_mem = 0
+            
+            # Formar batch basado en el presupuesto
+            while idx < total_tensors:
+                key, old_dtype, target_qtype, n_params, size_bytes = tensor_keys[idx]
+                # Estimación conservadora: carga + conversión (aprox 2.5x los bytes reales del tensor)
+                est_usage = size_bytes * 2.5
                 
-            # Reshape if needed
-            if (model_arch.shape_fix and len(data.shape) > 1 
-                and data.size >= REARRANGE_THRESHOLD 
-                and (data.size / 256).is_integer() 
-                and not (data.shape[-1] / 256).is_integer()):
-                 data = data.reshape(data.size // 256, 256)
+                # Si el presupuesto es muy bajo (<2GB extra) o el batch superaría el presupuesto, parar
+                if len(batch) > 0 and (batch_mem + est_usage > budget or budget < 2*1024*1024*1024):
+                    break
+                
+                batch.append(tensor_keys[idx])
+                batch_mem += est_usage
+                idx += 1
+                
+                # Máximo 100 tensores por ciclo para no retrasar demasiado el vaciado a disco
+                if len(batch) >= 100: break
 
-            # Quantize
-            data = gguf.quants.quantize(data, target_qtype)
+            # Procesar el batch
+            for key, old_dtype, target_qtype, n_params, size_bytes in batch:
+                data = state_dict[key]
+                
+                # Pre-conversion
+                if old_dtype == torch.bfloat16:
+                    data = data.to(torch.float32).numpy()
+                elif old_dtype in [getattr(torch, "float8_e4m3fn", "_invalid"), getattr(torch, "float8_e5m2", "_invalid")]:
+                    data = data.to(torch.float16).numpy()
+                else:
+                    data = data.numpy()
+
+                # Reshape si es necesario
+                if (model_arch.shape_fix and len(data.shape) > 1 
+                    and data.size >= REARRANGE_THRESHOLD 
+                    and (data.size / 256).is_integer() 
+                    and not (data.shape[-1] / 256).is_integer()):
+                     data = data.reshape(data.size // 256, 256)
+
+                # Quantize
+                data = gguf.quants.quantize(data, target_qtype)
+                
+                # Alineación estándar GGUF: cada tensor debe estar alineado
+                curr_rel_pos = fout.tell() - base_data_pos
+                if curr_rel_pos % alignment != 0:
+                    fout.write(bytes([0] * (alignment - (curr_rel_pos % alignment))))
+                
+                # Escritura a disco
+                data.tofile(fout)
+                del data
+                pbar.update(1)
             
-            # Standard GGUF alignment: each tensor data must be aligned
-            # GGUFWriter info block stores OFFSET relative to data block start.
-            # We must ensure our write position matches the calculated offset.
-            # But wait, we didn't store the calculated offset because GGUFWriter calculated it during write_ti!
-            
-            # Actually, GGUFWriter's write_ti_data_to_file calculates offsets linearly with padding.
-            # We must replicate the same padding here.
-            curr_rel_pos = fout.tell() - base_data_pos
-            if curr_rel_pos % alignment != 0:
-                fout.write(bytes([0] * (alignment - (curr_rel_pos % alignment))))
-            
-            # Write to file
-            data.tofile(fout)
-            
-            del data
-            if i % 10 == 0:
-                gc.collect()
+            # Limpieza tras cada batch
+            gc.collect()
 
     writer.close()
 

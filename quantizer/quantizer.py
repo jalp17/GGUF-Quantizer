@@ -331,15 +331,11 @@ class GGUFQuantizer:
             # El script convert.py (basado en llama.cpp) ya soporta leer del .safetensors original
             # usando LazyStateDict y filtrado de prefijos.
             
-            # Detección inteligente de RAM para modo Low-RAM (Colab Free Tier)
-            import psutil
-            total_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
-            low_ram_flag = ""
-            
-            # Umbral: Si hay menos de 14GB de RAM y el usuario no fuerza lo contrario
-            if total_ram_gb < 14:
-                print(f"⚠️ Low RAM detected ({total_ram_gb:.1f} GB). Enabling chunked processing to prevent OOM.")
-                low_ram_flag = "--low-ram"
+            # Modo Dynamic RAM Pro (Optimización inteligente de memoria)
+            # Siempre usamos --low-ram porque el motor ahora es dinámico:
+            # - Usa toda la RAM disponible si es posible (máxima velocidad).
+            # - Respeta automáticamente un margen de 1GB libre para el sistema.
+            low_ram_flag = "--low-ram"
             
             # Detección de Flux para extracción de T5
             flux_flag = ""
